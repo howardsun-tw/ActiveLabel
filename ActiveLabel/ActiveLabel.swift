@@ -275,8 +275,8 @@ open class ActiveLabel: UILabel {
     }
     
     // MARK: - private properties
-    fileprivate var _customizing: Bool = false
-    fileprivate var defaultCustomColor: UIColor = .black
+    private var _customizing: Bool = false
+    private var defaultCustomColor: UIColor = .black
     
     internal var mentionTapHandler: ((String) -> ())?
     internal var hashtagTapHandler: ((String) -> ())?
@@ -288,19 +288,19 @@ open class ActiveLabel: UILabel {
     internal var onDeselectForTest: (() -> Void)?
     internal var updateTextStorageCallCount: Int = 0
 
-    fileprivate var mentionFilterPredicate: ((String) -> Bool)?
-    fileprivate var hashtagFilterPredicate: ((String) -> Bool)?
-    
-    fileprivate var selectedElement: ElementTuple?
-    fileprivate var heightCorrection: CGFloat = 0
+    private var mentionFilterPredicate: ((String) -> Bool)?
+    private var hashtagFilterPredicate: ((String) -> Bool)?
+
+    private var selectedElement: ElementTuple?
+    private var heightCorrection: CGFloat = 0
     internal lazy var textStorage = NSTextStorage()
-    fileprivate lazy var layoutManager = NSLayoutManager()
-    fileprivate lazy var textContainer = NSTextContainer()
+    private lazy var layoutManager = NSLayoutManager()
+    private lazy var textContainer = NSTextContainer()
     lazy var activeElements = [ActiveType: [ElementTuple]]()
     
     // MARK: - helper functions
     
-    fileprivate func setupLabel() {
+    private func setupLabel() {
         textStorage.addLayoutManager(layoutManager)
         layoutManager.addTextContainer(textContainer)
         textContainer.lineFragmentPadding = 0
@@ -309,7 +309,7 @@ open class ActiveLabel: UILabel {
         isUserInteractionEnabled = true
     }
     
-    fileprivate func updateTextStorage(parseText: Bool = true) {
+    private func updateTextStorage(parseText: Bool = true) {
         updateTextStorageCallCount += 1
         if _customizing { return }
         // clean up previous active elements
@@ -336,14 +336,14 @@ open class ActiveLabel: UILabel {
         setNeedsDisplay()
     }
     
-    fileprivate func clearActiveElements() {
+    private func clearActiveElements() {
         selectedElement = nil
         for (type, _) in activeElements {
             activeElements[type]?.removeAll()
         }
     }
     
-    fileprivate func textOrigin(inRect rect: CGRect) -> CGPoint {
+    private func textOrigin(inRect rect: CGRect) -> CGPoint {
         let usedRect = layoutManager.usedRect(for: textContainer)
         heightCorrection = (rect.height - usedRect.height)/2
         let glyphOriginY = heightCorrection > 0 ? rect.origin.y + heightCorrection : rect.origin.y
@@ -351,7 +351,7 @@ open class ActiveLabel: UILabel {
     }
     
     /// add link attribute
-    fileprivate func addLinkAttribute(_ mutAttrString: NSMutableAttributedString) {
+    private func addLinkAttribute(_ mutAttrString: NSMutableAttributedString) {
         var range = NSRange(location: 0, length: 0)
         var attributes = mutAttrString.attributes(at: 0, effectiveRange: &range)
         
@@ -386,7 +386,7 @@ open class ActiveLabel: UILabel {
     }
     
     /// use regex check all link ranges
-    fileprivate func parseTextAndExtractActiveElements(_ attrString: NSAttributedString) -> String {
+    private func parseTextAndExtractActiveElements(_ attrString: NSAttributedString) -> String {
         var textString = attrString.string
         var textLength = textString.utf16.count
         var textRange = NSRange(location: 0, length: textLength)
@@ -417,7 +417,7 @@ open class ActiveLabel: UILabel {
     
     
     /// add line break mode
-    fileprivate func addLineBreak(_ attrString: NSAttributedString) -> NSMutableAttributedString {
+    private func addLineBreak(_ attrString: NSAttributedString) -> NSMutableAttributedString {
         let mutAttrString = NSMutableAttributedString(attributedString: attrString)
         
         var range = NSRange(location: 0, length: 0)
@@ -434,7 +434,7 @@ open class ActiveLabel: UILabel {
         return mutAttrString
     }
     
-    fileprivate func updateAttributesWhenSelected(_ isSelected: Bool) {
+    private func updateAttributesWhenSelected(_ isSelected: Bool) {
         guard let selectedElement = selectedElement else {
             return
         }
@@ -529,7 +529,7 @@ open class ActiveLabel: UILabel {
     }
     
     //MARK: - ActiveLabel handler
-    fileprivate func didTapMention(_ username: String) {
+    private func didTapMention(_ username: String) {
         guard let mentionHandler = mentionTapHandler else {
             delegate?.didSelect(username, type: .mention)
             return
@@ -537,7 +537,7 @@ open class ActiveLabel: UILabel {
         mentionHandler(username)
     }
     
-    fileprivate func didTapHashtag(_ hashtag: String) {
+    private func didTapHashtag(_ hashtag: String) {
         guard let hashtagHandler = hashtagTapHandler else {
             delegate?.didSelect(hashtag, type: .hashtag)
             return
@@ -545,7 +545,7 @@ open class ActiveLabel: UILabel {
         hashtagHandler(hashtag)
     }
     
-    fileprivate func didTapStringURL(_ stringURL: String) {
+    private func didTapStringURL(_ stringURL: String) {
         guard let urlHandler = urlTapHandler, let url = URL(string: stringURL) else {
             delegate?.didSelect(stringURL, type: .url)
             return
@@ -553,7 +553,7 @@ open class ActiveLabel: UILabel {
         urlHandler(url)
     }
     
-    fileprivate func didTapStringEmail(_ stringEmail: String) {
+    private func didTapStringEmail(_ stringEmail: String) {
         guard let emailHandler = emailTapHandler else {
             delegate?.didSelect(stringEmail, type: .email)
             return
@@ -561,7 +561,7 @@ open class ActiveLabel: UILabel {
         emailHandler(stringEmail)
     }
     
-    fileprivate func didTap(_ element: String, for type: ActiveType) {
+    private func didTap(_ element: String, for type: ActiveType) {
         guard let elementHandler = customTapHandlers[type] else {
             delegate?.didSelect(element, type: type)
             return
