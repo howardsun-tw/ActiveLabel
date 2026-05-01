@@ -76,6 +76,7 @@ final class HitTestTests: XCTestCase {
 
     /// B2: a fresh tap within the 250ms deselect window must cancel the
     /// pending deselect so the label does not flicker.
+    @MainActor
     func testRapidRetapCancelsPendingDeselect() async throws {
         let label = ActiveLabel(frame: CGRect(x: 0, y: 0, width: 200, height: 40))
         label.font = UIFont.systemFont(ofSize: 14)
@@ -101,6 +102,7 @@ final class HitTestTests: XCTestCase {
     }
 
     /// B2: a solo tap with no follow-up must run the deselect after 250ms.
+    @MainActor
     func testSoloTapFiresDeselectAfterWindow() async throws {
         let label = ActiveLabel(frame: CGRect(x: 0, y: 0, width: 200, height: 40))
         label.font = UIFont.systemFont(ofSize: 14)
@@ -134,6 +136,7 @@ final class HitTestTests: XCTestCase {
 
     /// B2: dealloc cancellation. After the label is released, no late
     /// deselect should fire on a captured weak reference.
+    @MainActor
     func testDeinitCancelsPendingDeselect() async throws {
         let exp = XCTestExpectation(description: "deselect should NOT fire after dealloc")
         exp.isInverted = true
