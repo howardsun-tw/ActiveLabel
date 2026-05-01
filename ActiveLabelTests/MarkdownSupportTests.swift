@@ -325,6 +325,30 @@ final class MarkdownSupportTests: XCTestCase {
         XCTAssertEqual(label.activeElements[.url]?.first?.range, (label.text! as NSString).range(of: "x"))
     }
 
+    func testMarkdownExplicitLinkPreservesNonEscapableDestinationBackslash() {
+        let label = ActiveLabel()
+        label.markdownText = "[x](https://example.com/a\\qb)"
+
+        XCTAssertEqual(label.text, "x")
+        XCTAssertEqual(urlOriginals(in: label), ["https://example.com/a%5Cqb"])
+        XCTAssertEqual(label.activeElements[.url]?.first?.range, (label.text! as NSString).range(of: "x"))
+    }
+
+    func testMarkdownAngleBracketDestinationWithEscapedGreaterThanRemainsProtected() throws {
+        let label = ActiveLabel()
+        label.markdownText = "[x](<https://example.com/a\\>b>) [y](https://y.com)"
+
+        XCTAssertEqual(label.text, "x y")
+        XCTAssertEqual(urlOriginals(in: label), ["https://example.com/a%3Eb", "https://y.com"])
+
+        let text = label.text! as NSString
+        let elements = try XCTUnwrap(label.activeElements[.url])
+        XCTAssertEqual(elements.count, 2)
+        guard elements.count == 2 else { return }
+        XCTAssertEqual(elements[0].range, text.range(of: "x"))
+        XCTAssertEqual(elements[1].range, text.range(of: "y"))
+    }
+
     func testMarkdownEscapedBangBeforeLinkDoesNotCreateImage() {
         let label = ActiveLabel()
         label.markdownText = "\\![x](https://example.com)"

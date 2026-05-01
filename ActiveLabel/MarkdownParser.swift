@@ -361,7 +361,7 @@ enum MarkdownParser {
         let rawDestination: String
         let destinationEnd: String.Index
 
-        if trimmed.first == "<", let closingIndex = trimmed.firstIndex(of: ">") {
+        if trimmed.first == "<", let closingIndex = closingAngleBracket(in: trimmed, from: trimmed.index(after: trimmed.startIndex)) {
             let destinationStart = trimmed.index(after: trimmed.startIndex)
             guard destinationStart <= closingIndex else { return nil }
             rawDestination = String(trimmed[destinationStart..<closingIndex])
@@ -398,6 +398,20 @@ enum MarkdownParser {
         return unescapedMarkdownEscapes(in: rawDestination)
     }
 
+    private static func closingAngleBracket(in markdown: String, from start: String.Index) -> String.Index? {
+        var index = start
+
+        while index < markdown.endIndex {
+            if markdown[index] == ">", !isEscaped(index, in: markdown) {
+                return index
+            }
+
+            index = markdown.index(after: index)
+        }
+
+        return nil
+    }
+
     private static func isValidLinkTitle(_ title: String) -> Bool {
         guard let first = title.first else { return true }
 
@@ -432,6 +446,8 @@ enum MarkdownParser {
         return false
     }
 
+    private static let markdownEscapablePunctuation = Set<Character>("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
+
     private static func unescapedMarkdownEscapes(in text: String) -> String {
         var output = ""
         var index = text.startIndex
@@ -439,7 +455,7 @@ enum MarkdownParser {
         while index < text.endIndex {
             if text[index] == "\\" {
                 let nextIndex = text.index(after: index)
-                if nextIndex < text.endIndex {
+                if nextIndex < text.endIndex, markdownEscapablePunctuation.contains(text[nextIndex]) {
                     output.append(text[nextIndex])
                     index = text.index(after: nextIndex)
                     continue
