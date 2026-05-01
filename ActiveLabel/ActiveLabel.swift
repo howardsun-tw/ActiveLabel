@@ -117,10 +117,21 @@ open class ActiveLabel: UILabel {
         mentionFilterPredicate = predicate
         updateTextStorage()
     }
-    
+
     open func filterHashtag(_ predicate: @escaping (String) -> Bool) {
         hashtagFilterPredicate = predicate
         updateTextStorage()
+    }
+
+    /// Hands the underlying text storage to the closure so callers can layer
+    /// extra attributes (e.g. a search-highlight background) on top of the
+    /// already-parsed run attributes without going through `attributedText` —
+    /// reassigning `attributedText` clears the markdown state that powers
+    /// link/mention/hashtag tracking. Call after assigning `text` /
+    /// `markdownText` / `attributedText`.
+    open func decorateTextStorage(_ decorate: (NSTextStorage) -> Void) {
+        decorate(textStorage)
+        setNeedsDisplay()
     }
     
     // MARK: - override UILabel properties
@@ -338,7 +349,11 @@ open class ActiveLabel: UILabel {
     }
 
     private func markdownAttributedString(from markdown: String) -> NSAttributedString {
-        let result = MarkdownParser.parse(markdown, baseFont: markdownBaseFont ?? font)
+        let result = MarkdownParser.parse(
+            markdown,
+            baseFont: markdownBaseFont ?? font,
+            textColor: textColor ?? .label
+        )
         markdownLinkElements = result.links.map { link in
             let visibleText = result.attributedString.attributedSubstring(from: link.range).string
             return (link.range, ActiveElement.url(original: link.url.absoluteString, trimmed: visibleText), .url)

@@ -8,19 +8,110 @@ import Foundation
 #if canImport(UIKit)
 import UIKit
 
-struct MarkdownParseResult {
-    let attributedString: NSMutableAttributedString
-    let links: [MarkdownLink]
+public struct MarkdownParseResult {
+    public let attributedString: NSMutableAttributedString
+    public let links: [MarkdownLink]
+
+    init(attributedString: NSMutableAttributedString, links: [MarkdownLink]) {
+        self.attributedString = attributedString
+        self.links = links
+    }
 }
 
-struct MarkdownLink {
-    let range: NSRange
-    let url: URL
+public struct MarkdownLink {
+    public let range: NSRange
+    public let url: URL
+
+    init(range: NSRange, url: URL) {
+        self.range = range
+        self.url = url
+    }
 }
 
-enum MarkdownParser {
+public enum MarkdownParser {
 
-    static func parse(_ markdown: String, baseFont: UIFont) -> MarkdownParseResult {
+    /// Width (in points) used as the head indent for a single blockquote
+    /// nesting level and for the hanging indent of list items. Exposed so
+    /// callers can mirror the same indent in measurement tooling.
+    public static let blockQuoteIndent: CGFloat = 12
+    public static let listHangingIndent: CGFloat = 16
+
+    // MARK: - Cache
+
+    private final class CachedResult {
+        let attributedString: NSAttributedString
+        let links: [MarkdownLink]
+        init(attributedString: NSAttributedString, links: [MarkdownLink]) {
+            self.attributedString = attributedString
+            self.links = links
+        }
+    }
+
+    private static let cache: NSCache<NSString, CachedResult> = {
+        let cache = NSCache<NSString, CachedResult>()
+        cache.countLimit = 256
+        return cache
+    }()
+
+    /// Drop all memoized parse results. Test seam plus a manual purge
+    /// for callers that mutate global styling at runtime.
+    public static func clearCache() {
+        cache.removeAllObjects()
+    }
+
+    private static func cacheKey(
+        text: String,
+        baseFont: UIFont,
+        textColor: UIColor,
+        codeBackgroundColor: UIColor
+    ) -> NSString {
+        let fontKey = "\(baseFont.familyName)|\(baseFont.pointSize)|\(baseFont.fontDescriptor.symbolicTraits.rawValue)"
+        let textColorKey = textColor.activeLabelMarkdownCacheKey
+        let codeBgKey = codeBackgroundColor.activeLabelMarkdownCacheKey
+        return "\(textColorKey)|\(codeBgKey)|\(fontKey)|\(text)" as NSString
+    }
+
+    public static func parse(
+        _ markdown: String,
+        baseFont: UIFont,
+        textColor: UIColor = .label,
+        codeBackgroundColor: UIColor = .systemGray6
+    ) -> MarkdownParseResult {
+        let key = cacheKey(
+            text: markdown,
+            baseFont: baseFont,
+            textColor: textColor,
+            codeBackgroundColor: codeBackgroundColor
+        )
+        if let cached = cache.object(forKey: key) {
+            return MarkdownParseResult(
+                attributedString: NSMutableAttributedString(attributedString: cached.attributedString),
+                links: cached.links
+            )
+        }
+
+        let result = parseUncached(
+            markdown,
+            baseFont: baseFont,
+            textColor: textColor,
+            codeBackgroundColor: codeBackgroundColor
+        )
+        cache.setObject(
+            CachedResult(
+                attributedString: NSAttributedString(attributedString: result.attributedString),
+                links: result.links
+            ),
+            forKey: key
+        )
+        return result
+    }
+
+    private static func parseUncached(
+        _ markdown: String,
+        baseFont: UIFont,
+        textColor: UIColor,
+        codeBackgroundColor: UIColor
+    ) -> MarkdownParseResult {
         let options = AttributedString.MarkdownParsingOptions(
             interpretedSyntax: .full,
             failurePolicy: .returnPartiallyParsedIfPossible
@@ -28,7 +119,10 @@ enum MarkdownParser {
 
         guard let parsed = try? AttributedString(markdown: markdown, options: options) else {
             return MarkdownParseResult(
-                attributedString: NSMutableAttributedString(string: markdown, attributes: [.font: baseFont]),
+                attributedString: NSMutableAttributedString(
+                    string: markdown,
+                    attributes: bodyAttributes(baseFont: baseFont, textColor: textColor)
+                ),
                 links: []
             )
         }
@@ -39,6 +133,7 @@ enum MarkdownParser {
         var currentLinkGroup: ParsedLinkGroup?
         var currentBlockIdentity: Int?
         var currentListItemIdentity: Int?
+        var previousBlock: BlockDescriptor?
 
         func finishCurrentLinkGroup() {
             if let group = currentLinkGroup {
@@ -49,28 +144,64 @@ enum MarkdownParser {
 
         for run in parsed.runs {
             let runText = String(parsed.characters[run.range])
-            guard !runText.isEmpty else { continue }
-
             let block = blockDescriptor(for: run.presentationIntent)
+
             if currentBlockIdentity != block.identity {
                 finishCurrentLinkGroup()
                 if output.length > 0 {
-                    output.append(NSAttributedString(string: "\n", attributes: [.font: baseFont]))
+                    let trailingStyle = previousBlock?.paragraphStyle(baseFont: baseFont) ?? bodyParagraphStyle(baseFont: baseFont)
+                    output.append(NSAttributedString(
+                        string: "\n",
+                        attributes: [
+                            .font: baseFont,
+                            .paragraphStyle: trailingStyle
+                        ]
+                    ))
                 }
+
+                if block.kind == .thematicBreak {
+                    let dashes = String(repeating: "\u{2014}", count: 8)
+                    output.append(NSAttributedString(
+                        string: dashes,
+                        attributes: [
+                            .font: baseFont,
+                            .foregroundColor: textColor.withAlphaComponent(0.3),
+                            .paragraphStyle: block.paragraphStyle(baseFont: baseFont)
+                        ]
+                    ))
+                    currentBlockIdentity = block.identity
+                    currentListItemIdentity = nil
+                    previousBlock = block
+                    continue
+                }
+
                 let prefix = block.prefix(isContinuingListItem: block.listItemIdentity == currentListItemIdentity)
                 if !prefix.isEmpty {
-                    output.append(NSAttributedString(string: prefix, attributes: [.font: baseFont]))
+                    output.append(NSAttributedString(
+                        string: prefix,
+                        attributes: [
+                            .font: baseFont,
+                            .foregroundColor: textColor,
+                            .paragraphStyle: block.paragraphStyle(baseFont: baseFont)
+                        ]
+                    ))
                 }
                 currentBlockIdentity = block.identity
                 currentListItemIdentity = block.listItemIdentity
+                previousBlock = block
             }
+
+            guard !runText.isEmpty else { continue }
 
             let location = output.length
             let attributes = attributes(
                 baseFont: baseFont,
+                textColor: textColor,
+                codeBackgroundColor: codeBackgroundColor,
                 inlineIntent: run.inlinePresentationIntent,
                 presentationIntent: run.presentationIntent,
-                link: run.link
+                link: run.link,
+                block: block
             )
             output.append(NSAttributedString(string: runText, attributes: attributes))
 
@@ -94,7 +225,10 @@ enum MarkdownParser {
 
         if output.length == 0, !markdown.isEmpty {
             return MarkdownParseResult(
-                attributedString: NSMutableAttributedString(string: markdown, attributes: [.font: baseFont]),
+                attributedString: NSMutableAttributedString(
+                    string: markdown,
+                    attributes: bodyAttributes(baseFont: baseFont, textColor: textColor)
+                ),
                 links: []
             )
         }
@@ -483,42 +617,85 @@ enum MarkdownParser {
         return character.unicodeScalars.allSatisfy { CharacterSet.whitespacesAndNewlines.contains($0) }
     }
 
-    private struct BlockDescriptor {
+    enum BlockKind: Equatable {
+        case body
+        case header(level: Int)
+        case codeBlock
+        case orderedList
+        case unorderedList
+        case blockQuote
+        case thematicBreak
+    }
+
+    struct BlockDescriptor {
         let identity: Int
+        let kind: BlockKind
         let primaryPrefix: String
         let continuationPrefix: String
         let listItemIdentity: Int?
+        let blockQuoteDepth: Int
 
         func prefix(isContinuingListItem: Bool) -> String {
             isContinuingListItem ? continuationPrefix : primaryPrefix
+        }
+
+        func paragraphStyle(baseFont: UIFont) -> NSParagraphStyle {
+            let style: NSMutableParagraphStyle
+            switch kind {
+            case .header:
+                style = MarkdownParser.headerParagraphStyle()
+            case .codeBlock:
+                style = MarkdownParser.codeParagraphStyle()
+            case .orderedList, .unorderedList:
+                style = MarkdownParser.listParagraphStyle()
+            case .blockQuote:
+                style = MarkdownParser.blockQuoteParagraphStyle()
+            case .thematicBreak, .body:
+                style = MarkdownParser.bodyParagraphStyle(baseFont: baseFont)
+            }
+            // Layer blockquote indent on top of any other block kind that
+            // happens to be nested inside `> ...`.
+            if blockQuoteDepth > 0, kind != .blockQuote {
+                let extra = CGFloat(blockQuoteDepth) * MarkdownParser.blockQuoteIndent
+                style.firstLineHeadIndent += extra
+                style.headIndent += extra
+            }
+            return style
         }
     }
 
     private static func blockDescriptor(for intent: PresentationIntent?) -> BlockDescriptor {
         guard let intent else {
-            return BlockDescriptor(identity: -1, primaryPrefix: "", continuationPrefix: "", listItemIdentity: nil)
+            return BlockDescriptor(
+                identity: -1,
+                kind: .body,
+                primaryPrefix: "",
+                continuationPrefix: "",
+                listItemIdentity: nil,
+                blockQuoteDepth: 0
+            )
         }
 
         var paragraphIdentity: Int?
         var blockQuoteIdentity: Int?
         var listItemIdentity: Int?
+        var blockQuoteDepth = 0
+        var hasCodeBlock = false
+        var hasThematicBreak = false
+        var headerLevel: Int?
         var orderedList = false
         var unorderedList = false
         var ordinal: Int?
 
         for component in intent.components {
             switch component.kind {
-            case .header:
-                return BlockDescriptor(
-                    identity: component.identity,
-                    primaryPrefix: "",
-                    continuationPrefix: "",
-                    listItemIdentity: nil
-                )
+            case .header(let level):
+                headerLevel = level
             case .paragraph:
                 paragraphIdentity = component.identity
             case .blockQuote:
                 blockQuoteIdentity = component.identity
+                blockQuoteDepth += 1
             case .orderedList:
                 orderedList = true
             case .unorderedList:
@@ -526,27 +703,68 @@ enum MarkdownParser {
             case .listItem(let number):
                 listItemIdentity = component.identity
                 ordinal = number
+            case .codeBlock:
+                hasCodeBlock = true
+            case .thematicBreak:
+                hasThematicBreak = true
             default:
                 break
             }
+        }
+
+        if hasThematicBreak {
+            return BlockDescriptor(
+                identity: paragraphIdentity ?? -1,
+                kind: .thematicBreak,
+                primaryPrefix: "",
+                continuationPrefix: "",
+                listItemIdentity: nil,
+                blockQuoteDepth: blockQuoteDepth
+            )
+        }
+
+        if let level = headerLevel {
+            return BlockDescriptor(
+                identity: paragraphIdentity ?? -1,
+                kind: .header(level: level),
+                primaryPrefix: "",
+                continuationPrefix: "",
+                listItemIdentity: nil,
+                blockQuoteDepth: blockQuoteDepth
+            )
+        }
+
+        if hasCodeBlock {
+            return BlockDescriptor(
+                identity: paragraphIdentity ?? -1,
+                kind: .codeBlock,
+                primaryPrefix: "",
+                continuationPrefix: "",
+                listItemIdentity: nil,
+                blockQuoteDepth: blockQuoteDepth
+            )
         }
 
         if let listItemIdentity {
             if unorderedList {
                 return BlockDescriptor(
                     identity: paragraphIdentity ?? listItemIdentity,
+                    kind: .unorderedList,
                     primaryPrefix: "• ",
                     continuationPrefix: "  ",
-                    listItemIdentity: listItemIdentity
+                    listItemIdentity: listItemIdentity,
+                    blockQuoteDepth: blockQuoteDepth
                 )
             }
             if orderedList, let ordinal {
                 let prefix = "\(ordinal). "
                 return BlockDescriptor(
                     identity: paragraphIdentity ?? listItemIdentity,
+                    kind: .orderedList,
                     primaryPrefix: prefix,
                     continuationPrefix: String(repeating: " ", count: prefix.count),
-                    listItemIdentity: listItemIdentity
+                    listItemIdentity: listItemIdentity,
+                    blockQuoteDepth: blockQuoteDepth
                 )
             }
         }
@@ -554,27 +772,46 @@ enum MarkdownParser {
         if let blockQuoteIdentity {
             return BlockDescriptor(
                 identity: paragraphIdentity ?? blockQuoteIdentity,
-                primaryPrefix: "> ",
-                continuationPrefix: "> ",
-                listItemIdentity: nil
+                kind: .blockQuote,
+                primaryPrefix: "",
+                continuationPrefix: "",
+                listItemIdentity: nil,
+                blockQuoteDepth: blockQuoteDepth
             )
         }
 
         return BlockDescriptor(
             identity: paragraphIdentity ?? -1,
+            kind: .body,
             primaryPrefix: "",
             continuationPrefix: "",
-            listItemIdentity: nil
+            listItemIdentity: nil,
+            blockQuoteDepth: blockQuoteDepth
         )
     }
 
     private static func attributes(baseFont: UIFont,
+                                   textColor: UIColor,
+                                   codeBackgroundColor: UIColor,
                                    inlineIntent: InlinePresentationIntent?,
                                    presentationIntent: PresentationIntent?,
-                                   link: URL?) -> [NSAttributedString.Key: Any] {
+                                   link: URL?,
+                                   block: BlockDescriptor) -> [NSAttributedString.Key: Any] {
         var attributes: [NSAttributedString.Key: Any] = [
-            .font: font(baseFont: baseFont, inlineIntent: inlineIntent, presentationIntent: presentationIntent)
+            .font: font(baseFont: baseFont, inlineIntent: inlineIntent, presentationIntent: presentationIntent),
+            .paragraphStyle: block.paragraphStyle(baseFont: baseFont)
         ]
+
+        switch block.kind {
+        case .blockQuote:
+            attributes[.foregroundColor] = textColor.withAlphaComponent(0.8)
+        default:
+            attributes[.foregroundColor] = textColor
+        }
+
+        if block.kind == .codeBlock || inlineIntent?.contains(.code) == true {
+            attributes[.backgroundColor] = codeBackgroundColor
+        }
 
         if inlineIntent?.contains(.strikethrough) == true {
             attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
@@ -585,6 +822,59 @@ enum MarkdownParser {
         }
 
         return attributes
+    }
+
+    private static func bodyAttributes(baseFont: UIFont, textColor: UIColor) -> [NSAttributedString.Key: Any] {
+        [
+            .font: baseFont,
+            .foregroundColor: textColor,
+            .paragraphStyle: bodyParagraphStyle(baseFont: baseFont)
+        ]
+    }
+
+    // MARK: - Paragraph styles
+
+    private static func headerParagraphStyle() -> NSMutableParagraphStyle {
+        let style = NSMutableParagraphStyle()
+        style.paragraphSpacing = 4
+        style.paragraphSpacingBefore = 4
+        style.baseWritingDirection = .natural
+        return style
+    }
+
+    private static func bodyParagraphStyle(baseFont: UIFont) -> NSMutableParagraphStyle {
+        let style = NSMutableParagraphStyle()
+        style.paragraphSpacing = 2
+        style.paragraphSpacingBefore = 2
+        style.baseWritingDirection = .natural
+        return style
+    }
+
+    private static func codeParagraphStyle() -> NSMutableParagraphStyle {
+        let style = NSMutableParagraphStyle()
+        style.paragraphSpacing = 4
+        style.paragraphSpacingBefore = 4
+        style.baseWritingDirection = .natural
+        return style
+    }
+
+    private static func blockQuoteParagraphStyle() -> NSMutableParagraphStyle {
+        let style = NSMutableParagraphStyle()
+        style.paragraphSpacing = 2
+        style.paragraphSpacingBefore = 2
+        style.firstLineHeadIndent = blockQuoteIndent
+        style.headIndent = blockQuoteIndent
+        style.baseWritingDirection = .natural
+        return style
+    }
+
+    private static func listParagraphStyle() -> NSMutableParagraphStyle {
+        let style = NSMutableParagraphStyle()
+        style.paragraphSpacing = 4
+        style.paragraphSpacingBefore = 2
+        style.headIndent = listHangingIndent
+        style.baseWritingDirection = .natural
+        return style
     }
 
     private static func font(baseFont: UIFont,
@@ -641,6 +931,28 @@ enum MarkdownParser {
         case 6: return 1.05
         default: return 1.0
         }
+    }
+}
+
+private extension UIColor {
+    /// Stable across appearance changes: keys both light and dark
+    /// resolutions so dynamic colors hash the same in either trait.
+    var activeLabelMarkdownCacheKey: String {
+        let lightKey = resolvedColor(with: UITraitCollection(userInterfaceStyle: .light)).activeLabelMarkdownRGBAString
+        let darkKey = resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark)).activeLabelMarkdownRGBAString
+        if lightKey == darkKey { return "fixed:\(lightKey)" }
+        return "dyn:\(lightKey)|\(darkKey)"
+    }
+
+    private var activeLabelMarkdownRGBAString: String {
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        if getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
+            return String(format: "%.4f:%.4f:%.4f:%.4f", red, green, blue, alpha)
+        }
+        return String(describing: self)
     }
 }
 

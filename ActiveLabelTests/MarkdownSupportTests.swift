@@ -53,7 +53,7 @@ final class MarkdownSupportTests: XCTestCase {
             baseFont: baseFont
         )
 
-        XCTAssertEqual(result.attributedString.string, "Title\n• one\n• two\n> quote")
+        XCTAssertEqual(result.attributedString.string, "Title\n• one\n• two\nquote")
 
         let titleFont = font(in: result.attributedString, matching: "Title")
         XCTAssertTrue(titleFont.pointSize > baseFont.pointSize)
@@ -80,7 +80,119 @@ final class MarkdownSupportTests: XCTestCase {
             baseFont: baseFont
         )
 
-        XCTAssertEqual(result.attributedString.string, "> a\n> b")
+        XCTAssertEqual(result.attributedString.string, "a\nb")
+    }
+
+    // MARK: - Block-level paragraph styling
+
+    private func paragraphStyle(in attributedString: NSAttributedString, matching text: String) -> NSParagraphStyle? {
+        let range = (attributedString.string as NSString).range(of: text)
+        XCTAssertNotEqual(range.location, NSNotFound, "Expected to find \(text)")
+        return attributedString.attribute(.paragraphStyle, at: range.location, effectiveRange: nil) as? NSParagraphStyle
+    }
+
+    private func backgroundColor(in attributedString: NSAttributedString, matching text: String) -> UIColor? {
+        let range = (attributedString.string as NSString).range(of: text)
+        XCTAssertNotEqual(range.location, NSNotFound, "Expected to find \(text)")
+        return attributedString.attribute(.backgroundColor, at: range.location, effectiveRange: nil) as? UIColor
+    }
+
+    private func foregroundColor(in attributedString: NSAttributedString, matching text: String) -> UIColor? {
+        let range = (attributedString.string as NSString).range(of: text)
+        XCTAssertNotEqual(range.location, NSNotFound, "Expected to find \(text)")
+        return attributedString.attribute(.foregroundColor, at: range.location, effectiveRange: nil) as? UIColor
+    }
+
+    func testBlockQuoteUsesParagraphIndentInsteadOfTextualPrefix() throws {
+        let result = MarkdownParser.parse(
+            """
+            > quoted line
+            """,
+            baseFont: baseFont,
+            textColor: .black
+        )
+
+        XCTAssertEqual(result.attributedString.string, "quoted line")
+        let style = try XCTUnwrap(paragraphStyle(in: result.attributedString, matching: "quoted line"))
+        XCTAssertEqual(style.firstLineHeadIndent, 12)
+        XCTAssertEqual(style.headIndent, 12)
+    }
+
+    func testBlockQuoteFadesForegroundColor() throws {
+        let result = MarkdownParser.parse("> quote", baseFont: baseFont, textColor: .black)
+        let color = try XCTUnwrap(foregroundColor(in: result.attributedString, matching: "quote"))
+        var alpha: CGFloat = 0
+        XCTAssertTrue(color.getRed(nil, green: nil, blue: nil, alpha: &alpha))
+        XCTAssertEqual(alpha, 0.8, accuracy: 0.01)
+    }
+
+func testFencedCodeBlockRunCarriesBackgroundColor() throws {
+        let result = MarkdownParser.parse(
+            """
+            ```
+            line one
+            ```
+            """,
+            baseFont: baseFont,
+            textColor: .black,
+            codeBackgroundColor: .systemGray6
+        )
+
+        let bg = try XCTUnwrap(backgroundColor(in: result.attributedString, matching: "line one"))
+        XCTAssertEqual(bg, .systemGray6)
+    }
+
+    func testInlineCodeRunCarriesBackgroundColor() throws {
+        let result = MarkdownParser.parse(
+            "Use `print` here",
+            baseFont: baseFont,
+            textColor: .black,
+            codeBackgroundColor: .systemGray6
+        )
+
+        let bg = try XCTUnwrap(backgroundColor(in: result.attributedString, matching: "print"))
+        XCTAssertEqual(bg, .systemGray6)
+    }
+
+    func testListItemAppliesHangingHeadIndent() throws {
+        let result = MarkdownParser.parse(
+            """
+            - first
+            - second
+            """,
+            baseFont: baseFont
+        )
+
+        let style = try XCTUnwrap(paragraphStyle(in: result.attributedString, matching: "first"))
+        XCTAssertEqual(style.headIndent, 16)
+    }
+
+    func testHeaderCarriesHeaderParagraphStyle() throws {
+        let result = MarkdownParser.parse("# Title", baseFont: baseFont)
+        let style = try XCTUnwrap(paragraphStyle(in: result.attributedString, matching: "Title"))
+        XCTAssertEqual(style.paragraphSpacing, 4)
+        XCTAssertEqual(style.paragraphSpacingBefore, 4)
+    }
+
+    func testThematicBreakEmitsFadedDashes() throws {
+        let result = MarkdownParser.parse(
+            """
+            top
+
+            ---
+
+            bottom
+            """,
+            baseFont: baseFont,
+            textColor: .black
+        )
+
+        let dashes = String(repeating: "\u{2014}", count: 8)
+        XCTAssertTrue(result.attributedString.string.contains(dashes), "expected em-dash run, got \(result.attributedString.string)")
+        let color = try XCTUnwrap(foregroundColor(in: result.attributedString, matching: dashes))
+        var alpha: CGFloat = 0
+        XCTAssertTrue(color.getRed(nil, green: nil, blue: nil, alpha: &alpha))
+        XCTAssertEqual(alpha, 0.3, accuracy: 0.01)
     }
 
     func testMarkdownParserPreservesParagraphsInsideListItems() {
@@ -654,5 +766,111 @@ final class MarkdownSupportTests: XCTestCase {
         plainFont = try XCTUnwrap(label.textStorage.attribute(.font, at: 3, effectiveRange: nil) as? UIFont)
         XCTAssertTrue(boldFont.fontDescriptor.symbolicTraits.contains(.traitBold))
         XCTAssertFalse(plainFont.fontDescriptor.symbolicTraits.contains(.traitBold))
+    }
+
+    // MARK: - Cache
+
+    func testParseRepeatedInputReturnsEquivalentOutput() {
+        MarkdownParser.clearCache()
+        let text = "**hello** *world* `code` \(UUID().uuidString)"
+        let first = MarkdownParser.parse(text, baseFont: baseFont)
+        let second = MarkdownParser.parse(text, baseFont: baseFont)
+        XCTAssertEqual(first.attributedString.string, second.attributedString.string)
+        XCTAssertTrue(first.attributedString.isEqual(to: second.attributedString))
+    }
+
+    func testParseReturnsFreshMutableInstancesPerCall() {
+        MarkdownParser.clearCache()
+        let text = "**hello** \(UUID().uuidString)"
+        let first = MarkdownParser.parse(text, baseFont: baseFont)
+        let second = MarkdownParser.parse(text, baseFont: baseFont)
+        XCTAssertFalse(first.attributedString === second.attributedString,
+                       "Cache must hand out independent NSMutableAttributedString instances")
+    }
+
+    func testMutatingReturnedAttributedStringDoesNotPoisonCache() {
+        MarkdownParser.clearCache()
+        let text = "**stable** \(UUID().uuidString)"
+        let first = MarkdownParser.parse(text, baseFont: baseFont)
+        let originalLength = first.attributedString.length
+        first.attributedString.append(NSAttributedString(string: "POISON"))
+
+        let second = MarkdownParser.parse(text, baseFont: baseFont)
+        XCTAssertEqual(second.attributedString.length, originalLength)
+        XCTAssertFalse(second.attributedString.string.contains("POISON"))
+    }
+
+    func testDifferentBaseFontPointSizeProducesDistinctOutput() {
+        MarkdownParser.clearCache()
+        let text = "# heading"
+        let small = MarkdownParser.parse(text, baseFont: UIFont.systemFont(ofSize: 12))
+        let large = MarkdownParser.parse(text, baseFont: UIFont.systemFont(ofSize: 24))
+
+        let smallFont = small.attributedString.attribute(.font, at: 0, effectiveRange: nil) as? UIFont
+        let largeFont = large.attributedString.attribute(.font, at: 0, effectiveRange: nil) as? UIFont
+        XCTAssertNotEqual(smallFont?.pointSize, largeFont?.pointSize,
+                          "Distinct base fonts must miss the cache and re-parse")
+    }
+
+    func testDifferentTextColorProducesDistinctOutput() {
+        MarkdownParser.clearCache()
+        let text = "plain run"
+        let red = MarkdownParser.parse(text, baseFont: baseFont, textColor: .red)
+        let green = MarkdownParser.parse(text, baseFont: baseFont, textColor: .green)
+
+        let redColor = red.attributedString.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? UIColor
+        let greenColor = green.attributedString.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? UIColor
+        XCTAssertEqual(redColor, .red)
+        XCTAssertEqual(greenColor, .green)
+    }
+
+    func testDynamicTextColorKeyStableAcrossTraitChanges() {
+        MarkdownParser.clearCache()
+        let dynamicColor = UIColor { trait in
+            trait.userInterfaceStyle == .dark ? .green : .red
+        }
+
+        var lightFirst: NSAttributedString!
+        var darkSecond: NSAttributedString!
+        UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
+            lightFirst = MarkdownParser.parse("dynamic body", baseFont: baseFont, textColor: dynamicColor).attributedString
+        }
+        UITraitCollection(userInterfaceStyle: .dark).performAsCurrent {
+            darkSecond = MarkdownParser.parse("dynamic body", baseFont: baseFont, textColor: dynamicColor).attributedString
+        }
+
+        let lightForeground = lightFirst.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? UIColor
+        let darkForeground = darkSecond.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? UIColor
+
+        let darkResolved = UITraitCollection(userInterfaceStyle: .dark)
+        XCTAssertEqual(
+            lightForeground?.resolvedColor(with: darkResolved).cgColor.components ?? [],
+            darkForeground?.resolvedColor(with: darkResolved).cgColor.components ?? [],
+            "Dynamic color identity must survive trait flip — same key in either mode"
+        )
+    }
+
+    func testClearCacheForcesReparse() {
+        MarkdownParser.clearCache()
+        let text = "**reparse** \(UUID().uuidString)"
+        let first = MarkdownParser.parse(text, baseFont: baseFont)
+        let cached = MarkdownParser.parse(text, baseFont: baseFont)
+        XCTAssertFalse(first.attributedString === cached.attributedString)
+
+        MarkdownParser.clearCache()
+        let afterClear = MarkdownParser.parse(text, baseFont: baseFont)
+        XCTAssertFalse(cached.attributedString === afterClear.attributedString)
+        XCTAssertEqual(first.attributedString.string, afterClear.attributedString.string)
+    }
+
+    func testCachedLinksReturnedOnHit() {
+        MarkdownParser.clearCache()
+        let text = "see [docs](https://example.com) for details"
+        let first = MarkdownParser.parse(text, baseFont: baseFont)
+        let cached = MarkdownParser.parse(text, baseFont: baseFont)
+        XCTAssertEqual(first.links.count, 1)
+        XCTAssertEqual(cached.links.count, 1)
+        XCTAssertEqual(cached.links.first?.url, first.links.first?.url)
+        XCTAssertEqual(cached.links.first?.range, first.links.first?.range)
     }
 }
