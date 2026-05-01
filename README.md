@@ -68,9 +68,10 @@ label.handleURLTap { url in
 }
 ```
 
-Markdown links use the existing URL tap pipeline. For example,
-`[Apple](https://apple.com)` displays `Apple`, highlights that visible range,
-and calls `handleURLTap` with `https://apple.com`.
+When URL detection is enabled, as it is by default, Markdown links use the
+existing URL tap pipeline. For example, `[Apple](https://apple.com)` displays
+`Apple`, highlights that visible range, and calls `handleURLTap` with
+`https://apple.com`.
 
 Markdown support is best effort and UILabel-focused. Inline styles, links,
 headings, lists, and block quotes are converted into attributed text that
