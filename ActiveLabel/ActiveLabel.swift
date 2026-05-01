@@ -125,8 +125,9 @@ open class ActiveLabel: UILabel {
     override open var text: String? {
         didSet {
             clearMarkdownStateForNonMarkdownAssignment()
-            pendingDeselectTask?.cancel()
-            pendingDeselectTask = nil
+            if !syncingTextStorageText {
+                cancelPendingDeselectTask()
+            }
             updateTextStorage()
         }
     }
@@ -134,8 +135,7 @@ open class ActiveLabel: UILabel {
     override open var attributedText: NSAttributedString? {
         didSet {
             clearMarkdownStateForNonMarkdownAssignment()
-            pendingDeselectTask?.cancel()
-            pendingDeselectTask = nil
+            cancelPendingDeselectTask()
             updateTextStorage()
         }
     }
@@ -212,14 +212,20 @@ open class ActiveLabel: UILabel {
         updateAttributesWhenSelected(true)
 
         // Mirror the .ended branch deselect scheduling.
-        pendingDeselectTask?.cancel()
-        pendingDeselectTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(250))
-            guard !Task.isCancelled, let self else { return }
-            self.updateAttributesWhenSelected(false)
-            self.selectedElement = nil
-            self.pendingDeselectTask = nil
-            self.onDeselectForTest?()
+        scheduleDeselectTask()
+    }
+
+    /// Test seam: mirror the .began/.moved branch for selecting the Nth
+    /// active element without constructing a UITouch.
+    internal func simulateSelectionBegan(onElementAt globalIndex: Int) {
+        let flat = activeElements.flatMap { (type, elems) in elems.map { ($0, type) } }
+        guard globalIndex < flat.count else { return }
+        let (tuple, _) = flat[globalIndex]
+        cancelPendingDeselectTask()
+        if tuple.range.location != selectedElement?.range.location || tuple.range.length != selectedElement?.range.length {
+            updateAttributesWhenSelected(false)
+            selectedElement = tuple
+            updateAttributesWhenSelected(true)
         }
     }
 
@@ -242,6 +248,7 @@ open class ActiveLabel: UILabel {
         
         switch touch.phase {
         case .began, .moved, .regionEntered, .regionMoved:
+            cancelPendingDeselectTask()
             if let element = element(at: location) {
                 if element.range.location != selectedElement?.range.location || element.range.length != selectedElement?.range.length {
                     updateAttributesWhenSelected(false)
@@ -264,17 +271,10 @@ open class ActiveLabel: UILabel {
             case .email(let element): didTapStringEmail(element)
             }
 
-            pendingDeselectTask?.cancel()
-            pendingDeselectTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .milliseconds(250))
-                guard !Task.isCancelled, let self else { return }
-                self.updateAttributesWhenSelected(false)
-                self.selectedElement = nil
-                self.pendingDeselectTask = nil
-                self.onDeselectForTest?()
-            }
+            scheduleDeselectTask()
             avoidSuperCall = true
         case .cancelled:
+            cancelPendingDeselectTask()
             updateAttributesWhenSelected(false)
             selectedElement = nil
         case .stationary:
@@ -322,8 +322,7 @@ open class ActiveLabel: UILabel {
         storedMarkdownText = markdown
         markdownBaseFont = markdown == nil ? nil : font
         markdownLinkElements.removeAll()
-        pendingDeselectTask?.cancel()
-        pendingDeselectTask = nil
+        cancelPendingDeselectTask()
 
         applyingMarkdownText = true
         defer { applyingMarkdownText = false }
@@ -364,6 +363,7 @@ open class ActiveLabel: UILabel {
     private func updateTextStorage(parseText: Bool = true) {
         updateTextStorageCallCount += 1
         if _customizing { return }
+        resetSelectionState()
 
         let sourceAttributedText: NSAttributedString?
         let shouldParseText: Bool
@@ -406,6 +406,28 @@ open class ActiveLabel: UILabel {
         selectedElementOriginalAttributes.removeAll()
         for (type, _) in activeElements {
             activeElements[type]?.removeAll()
+        }
+    }
+
+    private func cancelPendingDeselectTask() {
+        pendingDeselectTask?.cancel()
+        pendingDeselectTask = nil
+    }
+
+    private func resetSelectionState() {
+        selectedElement = nil
+        selectedElementOriginalAttributes.removeAll()
+    }
+
+    private func scheduleDeselectTask() {
+        cancelPendingDeselectTask()
+        pendingDeselectTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled, let self else { return }
+            self.updateAttributesWhenSelected(false)
+            self.resetSelectionState()
+            self.pendingDeselectTask = nil
+            self.onDeselectForTest?()
         }
     }
     

@@ -342,6 +342,60 @@ final class MarkdownSupportTests: XCTestCase {
         assertBackgroundColor(in: label, at: 1, equals: nil)
     }
 
+    @MainActor
+    func testQuickReselectionIsNotClearedByPreviousDeselectTask() async {
+        let label = ActiveLabel()
+        label.enabledTypes = [.hashtag]
+        label.configureLinkAttribute = { _, attributes, isSelected in
+            var attributes = attributes
+            if isSelected {
+                attributes[.backgroundColor] = UIColor.yellow
+            }
+            return attributes
+        }
+        label.text = "#one #two"
+
+        label.simulateTapEnded(onElementAt: 0)
+        assertBackgroundColor(in: label, at: 1, equals: .yellow)
+
+        label.simulateSelectionBegan(onElementAt: 1)
+        assertBackgroundColor(in: label, at: 1, equals: nil)
+        assertBackgroundColor(in: label, at: 6, equals: .yellow)
+
+        try? await Task.sleep(for: .milliseconds(350))
+
+        assertBackgroundColor(in: label, at: 6, equals: .yellow)
+    }
+
+    @MainActor
+    func testRestyleWhileSelectedLetsDeselectCompleteWithoutRestoringStaleAttributes() async throws {
+        let label = ActiveLabel()
+        label.configureLinkAttribute = { _, attributes, isSelected in
+            var attributes = attributes
+            if isSelected {
+                attributes[.backgroundColor] = UIColor.yellow
+            }
+            return attributes
+        }
+        label.markdownText = "**#ta**g"
+
+        let exp = XCTestExpectation(description: "deselect fires")
+        label.onDeselectForTest = { exp.fulfill() }
+        label.simulateTapEnded(onElementAt: 0)
+        assertBackgroundColor(in: label, at: 1, equals: .yellow)
+
+        label.hashtagColor = .red
+
+        await fulfillment(of: [exp], timeout: 1.0)
+
+        assertBackgroundColor(in: label, at: 1, equals: nil)
+        assertBackgroundColor(in: label, at: 3, equals: nil)
+        try assertForegroundColor(in: label, at: 1, equals: .red)
+        try assertForegroundColor(in: label, at: 3, equals: .red)
+        try assertFontIsBold(in: label, at: 1, true)
+        try assertFontIsBold(in: label, at: 3, false)
+    }
+
     func testMarkdownTextClearsWhenPlainTextIsAssignedInsideCustomize() {
         let label = ActiveLabel()
         label.markdownText = "[ab](https://example.com)"
