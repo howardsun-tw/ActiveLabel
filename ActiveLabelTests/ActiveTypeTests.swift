@@ -418,7 +418,7 @@ class ActiveTypeTests: XCTestCase {
     func testStringTrimmingURLLongerThanLimit() {
         let trimLimit = 30
         let url = "https://twitter.com/twicket_app/status/649678392372121601"
-        let trimmedURL = url.trim(to: trimLimit)
+        let trimmedURL = String(url.prefix(trimLimit)) + "..."
         let text = "Tweet with long url: \(url)"
         label.urlMaximumLength = trimLimit
         label.text = text
