@@ -118,11 +118,19 @@ typealias ElementTuple = (range: NSRange, element: ActiveElement, type: ActiveTy
     
     // MARK: - override UILabel properties
     override open var text: String? {
-        didSet { updateTextStorage() }
+        didSet {
+            pendingDeselectTask?.cancel()
+            pendingDeselectTask = nil
+            updateTextStorage()
+        }
     }
-    
+
     override open var attributedText: NSAttributedString? {
-        didSet { updateTextStorage() }
+        didSet {
+            pendingDeselectTask?.cancel()
+            pendingDeselectTask = nil
+            updateTextStorage()
+        }
     }
     
     override open var font: UIFont! {
@@ -183,7 +191,28 @@ typealias ElementTuple = (range: NSRange, element: ActiveElement, type: ActiveTy
         updateTextStorage()
         return self
     }
-    
+
+    /// Test seam: synthesize the bookkeeping of a tap-end on the Nth active
+    /// element across all types. Bypasses real touch routing for unit tests.
+    internal func simulateTapEnded(onElementAt globalIndex: Int) {
+        let flat = activeElements.flatMap { (type, elems) in elems.map { ($0, type) } }
+        guard globalIndex < flat.count else { return }
+        let (tuple, _) = flat[globalIndex]
+        selectedElement = tuple
+        updateAttributesWhenSelected(true)
+
+        // Mirror the .ended branch deselect scheduling.
+        pendingDeselectTask?.cancel()
+        pendingDeselectTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled, let self else { return }
+            self.updateAttributesWhenSelected(false)
+            self.selectedElement = nil
+            self.pendingDeselectTask = nil
+            self.onDeselectForTest?()
+        }
+    }
+
     // MARK: - Auto layout
     
     open override var intrinsicContentSize: CGSize {
@@ -216,7 +245,7 @@ typealias ElementTuple = (range: NSRange, element: ActiveElement, type: ActiveTy
             }
         case .ended, .regionExited:
             guard let selectedElement = selectedElement else { return avoidSuperCall }
-            
+
             switch selectedElement.element {
             case .mention(let userHandle): didTapMention(userHandle)
             case .hashtag(let hashtag): didTapHashtag(hashtag)
@@ -224,11 +253,15 @@ typealias ElementTuple = (range: NSRange, element: ActiveElement, type: ActiveTy
             case .custom(let element): didTap(element, for: selectedElement.type)
             case .email(let element): didTapStringEmail(element)
             }
-            
-            let when = DispatchTime.now() + Double(Int64(0.25 * Double(NSEC_PER_SEC))) / Double(NSEC_PER_SEC)
-            DispatchQueue.main.asyncAfter(deadline: when) {
+
+            pendingDeselectTask?.cancel()
+            pendingDeselectTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(250))
+                guard !Task.isCancelled, let self else { return }
                 self.updateAttributesWhenSelected(false)
                 self.selectedElement = nil
+                self.pendingDeselectTask = nil
+                self.onDeselectForTest?()
             }
             avoidSuperCall = true
         case .cancelled:
@@ -252,7 +285,10 @@ typealias ElementTuple = (range: NSRange, element: ActiveElement, type: ActiveTy
     internal var urlTapHandler: ((URL) -> ())?
     internal var emailTapHandler: ((String) -> ())?
     internal var customTapHandlers: [ActiveType : ((String) -> ())] = [:]
-    
+
+    internal var pendingDeselectTask: Task<Void, Never>?
+    internal var onDeselectForTest: (() -> Void)?
+
     fileprivate var mentionFilterPredicate: ((String) -> Bool)?
     fileprivate var hashtagFilterPredicate: ((String) -> Bool)?
     
@@ -531,6 +567,10 @@ typealias ElementTuple = (range: NSRange, element: ActiveElement, type: ActiveTy
             return
         }
         elementHandler(element)
+    }
+
+    deinit {
+        pendingDeselectTask?.cancel()
     }
 }
 
