@@ -54,24 +54,46 @@ label.handleHashtagTap { hashtag in
 ## Markdown text
 
 ActiveLabel can parse Markdown with native Foundation APIs and render the result
-as attributed label text:
+as attributed label text. Assign Markdown content to `markdownText` instead of
+`text` or `attributedText`:
 
 ```swift
-label.markdownText = """
-# Title
+label.customize { label in
+    label.numberOfLines = 0
+    label.enabledTypes = [.mention, .hashtag, .url, .email]
 
-Hello **bold**, *italic*, `code`, [Apple](https://apple.com), #tag, @user
-"""
+    label.markdownText = """
+    # Release notes
 
-label.handleURLTap { url in
-    print("URL tapped: \(url)")
+    Hello **bold**, *italic*, `code`, [Apple](https://apple.com),
+    #tag, @user, and https://example.com/docs.
+    """
+
+    label.handleURLTap { url in
+        print("URL tapped: \(url)")
+    }
 }
 ```
 
-When URL detection is enabled, as it is by default, Markdown links use the
-existing URL tap pipeline. For example, `[Apple](https://apple.com)` displays
-`Apple`, highlights that visible range, and calls `handleURLTap` with
+Keep `.url` in `enabledTypes` if Markdown links should be tappable. Explicit
+Markdown links use the existing URL tap pipeline: `[Apple](https://apple.com)`
+displays `Apple`, highlights that visible range, and calls `handleURLTap` with
 `https://apple.com`.
+
+Bare URLs inside Markdown text still use the normal URL detector and respect
+`urlMaximumLength`:
+
+```swift
+label.urlMaximumLength = 24
+label.markdownText = """
+Read [the docs](https://example.com/docs) or visit
+https://example.com/releases/latest.
+"""
+```
+
+In that example, the Markdown link keeps the visible text `the docs` while the
+bare URL can be shortened in the label. Tapping either range calls
+`handleURLTap` with the destination URL.
 
 Markdown support is best effort and UILabel-focused. Inline styles, links,
 headings, lists, and block quotes are converted into attributed text that
