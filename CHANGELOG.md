@@ -25,6 +25,9 @@
 ### Enhancements
 - Default `enabledTypes` now includes `.email`, matching the
   long-standing README claim.
+- Added `markdownText`, a native best-effort Markdown parser that renders
+  UILabel-friendly attributed text and routes Markdown links through
+  `handleURLTap`.
 
 ### Internal changes
 - TextKit 1 stack retained intentionally; see "Why TextKit 1?" in the

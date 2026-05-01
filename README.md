@@ -51,6 +51,32 @@ label.handleHashtagTap { hashtag in
 }
 ```
 
+## Markdown text
+
+ActiveLabel can parse Markdown with native Foundation APIs and render the result
+as attributed label text:
+
+```swift
+label.markdownText = """
+# Title
+
+Hello **bold**, *italic*, `code`, [Apple](https://apple.com), #tag, @user
+"""
+
+label.handleURLTap { url in
+    print("URL tapped: \(url)")
+}
+```
+
+Markdown links use the existing URL tap pipeline. For example,
+`[Apple](https://apple.com)` displays `Apple`, highlights that visible range,
+and calls `handleURLTap` with `https://apple.com`.
+
+Markdown support is best effort and UILabel-focused. Inline styles, links,
+headings, lists, and block quotes are converted into attributed text that
+TextKit 1 can draw; ActiveLabel is not a full Markdown document renderer and
+does not render HTML, images, or tables.
+
 ## Custom types
 
 ```swift
