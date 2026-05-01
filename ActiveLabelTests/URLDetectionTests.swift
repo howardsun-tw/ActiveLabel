@@ -48,12 +48,15 @@ final class URLDetectionTests: XCTestCase {
 
     // §5.2: NSDataDetector matches "mailto:foo@bar.com" as a link with scheme
     // mailto. ActiveBuilder must filter these out so emails route through
-    // the email regex pipeline.
+    // the email regex pipeline. Spec requires both halves: zero .url elements
+    // AND exactly one .email element.
     func testMailtoLinkFilteredOut() {
         label.enabledTypes = [.url, .email]
         label.text = "send to mailto:foo@bar.com today"
         XCTAssertEqual(urlElements.count, 0,
                        "mailto: links must be filtered so the email regex owns them")
+        XCTAssertEqual(label.activeElements[.email]?.count, 1,
+                       "email regex must still detect the address after the URL filter")
     }
 
     // Regression for the duplicate-URL trim bug. The old implementation used

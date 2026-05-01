@@ -1,4 +1,4 @@
-# ActiveLabel.swift [![Carthage compatible](https://img.shields.io/badge/Carthage-compatible-4BC51D.svg?style=flat)](https://github.com/Carthage/Carthage) [![Build Status](https://travis-ci.org/optonaut/ActiveLabel.swift.svg)](https://travis-ci.org/optonaut/ActiveLabel.swift)
+# ActiveLabel.swift [![Carthage compatible](https://img.shields.io/badge/Carthage-compatible-4BC51D.svg?style=flat)](https://github.com/Carthage/Carthage) [![CI](https://github.com/optonaut/ActiveLabel.swift/actions/workflows/ci.yml/badge.svg)](https://github.com/optonaut/ActiveLabel.swift/actions/workflows/ci.yml)
 
 UILabel drop-in replacement supporting Hashtags (#), Mentions (@), URLs (http://), Emails and custom regex patterns, written in Swift
 
