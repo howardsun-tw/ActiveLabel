@@ -142,6 +142,15 @@ final class MarkdownSupportTests: XCTestCase {
         }
     }
 
+    private func urlElements(in label: ActiveLabel) -> [(original: String, trimmed: String, range: NSRange)] {
+        return (label.activeElements[.url] ?? []).compactMap { tuple in
+            if case .url(let original, let trimmed) = tuple.element {
+                return (original, trimmed, tuple.range)
+            }
+            return nil
+        }
+    }
+
     private func assertFontIsBold(
         in label: ActiveLabel,
         at location: Int,
@@ -216,6 +225,52 @@ final class MarkdownSupportTests: XCTestCase {
 
         XCTAssertEqual(label.text, "Apple https://example.com")
         XCTAssertEqual(urlOriginals(in: label), ["https://apple.com", "https://example.com"])
+    }
+
+    func testMarkdownBareURLTrimsLikePlainTextAndStoresOriginalURL() {
+        let label = ActiveLabel()
+        let originalURL = "https://very-long.example/path"
+        let trimmedURL = String(originalURL.prefix(20)) + "..."
+        label.urlMaximumLength = 20
+        label.markdownText = "See \(originalURL)"
+
+        XCTAssertEqual(label.text, "See \(trimmedURL)")
+        XCTAssertEqual(urlOriginals(in: label), [originalURL])
+        XCTAssertEqual(label.activeElements[.url]?.first?.range, (label.text! as NSString).range(of: trimmedURL))
+    }
+
+    func testExplicitMarkdownLinkUsesDestinationURLAndDoesNotTrimVisibleText() {
+        let label = ActiveLabel()
+        label.urlMaximumLength = 3
+        label.markdownText = "Go [Apple](https://apple.com/very-long-path)"
+
+        XCTAssertEqual(label.text, "Go Apple")
+        XCTAssertEqual(urlOriginals(in: label), ["https://apple.com/very-long-path"])
+        XCTAssertEqual(label.activeElements[.url]?.first?.range, (label.text! as NSString).range(of: "Apple"))
+    }
+
+    func testMarkdownBareURLsBeforeAndAfterExplicitLinkTrimWithCorrectRanges() {
+        let label = ActiveLabel()
+        let beforeURL = "https://before.example/long-path"
+        let afterURL = "https://after.example/long-path"
+        let markdownURL = "https://apple.com/path"
+        let beforeTrimmed = String(beforeURL.prefix(16)) + "..."
+        let afterTrimmed = String(afterURL.prefix(16)) + "..."
+        label.urlMaximumLength = 16
+        label.markdownText = "\(beforeURL) [Apple](\(markdownURL)) \(afterURL)"
+
+        XCTAssertEqual(label.text, "\(beforeTrimmed) Apple \(afterTrimmed)")
+
+        let elements = urlElements(in: label)
+        XCTAssertEqual(Set(elements.map { $0.original }), Set([beforeURL, markdownURL, afterURL]))
+        XCTAssertEqual(elements.first { $0.original == beforeURL }?.trimmed, beforeTrimmed)
+        XCTAssertEqual(elements.first { $0.original == markdownURL }?.trimmed, "Apple")
+        XCTAssertEqual(elements.first { $0.original == afterURL }?.trimmed, afterTrimmed)
+
+        let text = label.text! as NSString
+        XCTAssertEqual(elements.first { $0.original == beforeURL }?.range, text.range(of: beforeTrimmed))
+        XCTAssertEqual(elements.first { $0.original == markdownURL }?.range, text.range(of: "Apple"))
+        XCTAssertEqual(elements.first { $0.original == afterURL }?.range, text.range(of: afterTrimmed))
     }
 
     func testActiveElementSpanningMixedMarkdownRunsPreservesRunAttributes() throws {

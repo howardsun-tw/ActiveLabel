@@ -33,6 +33,7 @@ enum MarkdownParser {
 
         let output = NSMutableAttributedString(string: "")
         var links: [MarkdownLink] = []
+        var explicitLinks = explicitLinkCandidates(in: markdown)
         var currentBlockIdentity: Int?
         var currentListItemIdentity: Int?
 
@@ -62,11 +63,13 @@ enum MarkdownParser {
             )
             output.append(NSAttributedString(string: runText, attributes: attributes))
 
-            if let url = run.link {
+            if let url = run.link,
+               let explicitLinkIndex = explicitLinks.firstIndex(where: { $0.url == url && $0.visibleText == runText }) {
                 links.append(MarkdownLink(
                     range: NSRange(location: location, length: (runText as NSString).length),
                     url: url
                 ))
+                explicitLinks.remove(at: explicitLinkIndex)
             }
         }
 
@@ -78,6 +81,44 @@ enum MarkdownParser {
         }
 
         return MarkdownParseResult(attributedString: output, links: links)
+    }
+
+    private struct ExplicitLinkCandidate {
+        let visibleText: String
+        let url: URL
+    }
+
+    private static func explicitLinkCandidates(in markdown: String) -> [ExplicitLinkCandidate] {
+        let pattern = #"(?<!!)\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+
+        let nsMarkdown = markdown as NSString
+        let fullRange = NSRange(location: 0, length: nsMarkdown.length)
+        return regex.matches(in: markdown, range: fullRange).compactMap { match in
+            guard match.numberOfRanges >= 3 else { return nil }
+
+            let labelMarkdown = nsMarkdown.substring(with: match.range(at: 1))
+            let urlString = nsMarkdown.substring(with: match.range(at: 2))
+            guard let url = URL(string: urlString) else { return nil }
+
+            return ExplicitLinkCandidate(
+                visibleText: renderedInlineText(from: labelMarkdown),
+                url: url
+            )
+        }
+    }
+
+    private static func renderedInlineText(from markdown: String) -> String {
+        let options = AttributedString.MarkdownParsingOptions(
+            interpretedSyntax: .full,
+            failurePolicy: .returnPartiallyParsedIfPossible
+        )
+
+        guard let parsed = try? AttributedString(markdown: markdown, options: options) else {
+            return markdown
+        }
+
+        return String(parsed.characters)
     }
 
     private struct BlockDescriptor {
