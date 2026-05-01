@@ -822,46 +822,49 @@ Replace `ActiveBuilder.swift:28-54` with:
                                              range: NSRange,
                                              maximumLength: Int?) -> ([ElementTuple], String) {
         guard let detector = urlDetector else { return ([], text) }
-        let nsstring = text as NSString
+        let originalNSString = text as NSString
         var working = text
 
         // Filter mailto: out — those belong to the email regex pipeline (§5.2).
-        var matches = detector.matches(in: working, options: [], range: range)
+        let matches = detector.matches(in: text, options: [], range: range)
             .filter { $0.url?.scheme?.lowercased() != "mailto" }
             .filter { $0.range.length > 2 }
 
         var elements: [ElementTuple] = []
+        // Cumulative shift between original-text locations and `working`
+        // locations after prior splices to the LEFT of the current match.
+        var offset = 0
 
-        // Walk right-to-left so that a per-match string splice does not
-        // shift the ranges of earlier matches.
-        for match in matches.reversed() {
-            let word = nsstring.substring(with: match.range)
+        // Walk left-to-right (detector order). Each splice only shifts
+        // ranges that have not yet been processed; track a running offset
+        // to translate each match's original location into its position
+        // in `working`. (RTL with stored-original-ranges was rejected
+        // because the rightmost match's stored location goes stale once
+        // a left-side splice changes the buffer length.)
+        for match in matches {
+            let word = originalNSString.substring(with: match.range)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            let liveLocation = match.range.location + offset
+            let liveRange = NSRange(location: liveLocation, length: match.range.length)
 
             guard let maxLength = maximumLength, word.count > maxLength else {
                 let element = ActiveElement.create(with: .url, text: word)
-                elements.append((match.range, element, .url))
+                elements.append((liveRange, element, .url))
                 continue
             }
 
             let trimmed = String(word.prefix(maxLength)) + "..."
-            working = (working as NSString).replacingCharacters(in: match.range, with: trimmed)
-            let newRange = NSRange(location: match.range.location,
-                                   length: (trimmed as NSString).length)
+            let trimmedNSLength = (trimmed as NSString).length
+            working = (working as NSString).replacingCharacters(in: liveRange, with: trimmed)
+            offset += trimmedNSLength - liveRange.length
+
+            let newRange = NSRange(location: liveLocation, length: trimmedNSLength)
             let element = ActiveElement.url(original: word, trimmed: trimmed)
             elements.append((newRange, element, .url))
         }
-        // We appended in reverse; restore document order for callers.
-        return (elements.reversed(), working)
+        return (elements, working)
     }
-```
-
-Note: `matches` is reassigned twice in the original — clean it up to be a `let`:
-
-```swift
-        let matches = detector.matches(in: working, options: [], range: range)
-            .filter { $0.url?.scheme?.lowercased() != "mailto" }
-            .filter { $0.range.length > 2 }
 ```
 
 - [ ] **Step 8: Update the existing test at `ActiveTypeTests.swift:201`**
@@ -909,10 +912,12 @@ Updates the existing testURL case at line 201 from count==0 to count==1.
 Detector results with scheme "mailto" are filtered out so the email
 regex pipeline owns those matches (§5.2).
 
-Trim path now walks matches right-to-left and splices per-match instead
-of replacingOccurrences-then-range-of, fixing a duplicate-URL bug where
-two long copies of the same URL produced one correct range and one
-wrong range.
+Trim path now splices each detector match in detector order while
+tracking a running offset between original and live ranges, replacing
+the prior replacingOccurrences-then-range-of approach that produced
+one correct range and one wrong range when the same long URL appeared
+twice. (RTL was rejected because the rightmost match's stored original
+location goes stale once an earlier splice changes buffer length.)
 
 Removes RegexParser.urlPattern. The ActiveType.pattern accessor returns
 "" for .url as an unused sentinel; .url no longer consults its pattern.
