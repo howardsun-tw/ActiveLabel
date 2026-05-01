@@ -21,7 +21,7 @@ open class ActiveLabel: UILabel {
     // MARK: - public properties
     open weak var delegate: ActiveLabelDelegate?
     
-    open var enabledTypes: [ActiveType] = [.mention, .hashtag, .url]
+    open var enabledTypes: [ActiveType] = [.mention, .hashtag, .url, .email]
     
     open var urlMaximumLength: Int?
     

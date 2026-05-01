@@ -477,4 +477,10 @@ class ActiveTypeTests: XCTestCase {
         let color = attrs[.foregroundColor] as? UIColor
         XCTAssertEqual(color, .red)
     }
+
+    func testDefaultEnabledTypesIncludeEmail() {
+        let fresh = ActiveLabel()
+        XCTAssertTrue(fresh.enabledTypes.contains(.email),
+                      ".email must be enabled by default to match documented behavior")
+    }
 }
