@@ -227,6 +227,24 @@ final class MarkdownSupportTests: XCTestCase {
         XCTAssertEqual(urlOriginals(in: label), ["https://apple.com", "https://example.com"])
     }
 
+    func testMarkdownBareDomainBeforeExplicitLinkDoesNotConsumeMarkdownLinkAlignment() {
+        let label = ActiveLabel()
+        label.urlMaximumLength = 6
+        label.markdownText = "google.com [Apple](https://apple.com)"
+
+        XCTAssertEqual(label.text, "google... Apple")
+
+        let elements = urlElements(in: label)
+        XCTAssertEqual(elements.count, 2)
+        XCTAssertEqual(elements.map { $0.original }, ["https://apple.com", "google.com"])
+        XCTAssertEqual(elements.first { $0.original == "google.com" }?.trimmed, "google...")
+        XCTAssertEqual(elements.first { $0.original == "https://apple.com" }?.trimmed, "Apple")
+
+        let text = label.text! as NSString
+        XCTAssertEqual(elements.first { $0.original == "google.com" }?.range, text.range(of: "google..."))
+        XCTAssertEqual(elements.first { $0.original == "https://apple.com" }?.range, text.range(of: "Apple"))
+    }
+
     func testMarkdownBareURLTrimsLikePlainTextAndStoresOriginalURL() {
         let label = ActiveLabel()
         let originalURL = "https://very-long.example/path"

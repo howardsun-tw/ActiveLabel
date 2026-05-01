@@ -123,19 +123,27 @@ enum MarkdownParser {
         var links: [MarkdownLink] = []
         var eventIndex = 0
 
-        // Walk source and output link events together so a bare URL cannot
-        // consume an identical explicit Markdown link.
+        // Walk source and output link events together. Bare source events may
+        // be detected even when Foundation emits no link run for them, so skip
+        // unmatched bare events without looking past mismatching explicit ones.
         for group in linkGroups {
-            guard eventIndex < sourceEvents.count else { break }
+            var matchedEvent: SourceLinkEvent?
 
-            let event = sourceEvents[eventIndex]
-            eventIndex += 1
+            while eventIndex < sourceEvents.count {
+                let event = sourceEvents[eventIndex]
+                eventIndex += 1
 
-            guard event.url == group.url, event.visibleText == group.visibleText else {
-                continue
+                if event.url == group.url, event.visibleText == group.visibleText {
+                    matchedEvent = event
+                    break
+                }
+
+                if event.kind == .explicit {
+                    break
+                }
             }
 
-            if event.kind == .explicit {
+            if let event = matchedEvent, event.kind == .explicit {
                 links.append(MarkdownLink(range: group.range, url: event.url))
             }
         }
