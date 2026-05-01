@@ -37,10 +37,16 @@ final class HashableSynthesisTests: XCTestCase {
     func testHashConsistencyWithEquality() {
         let a = ActiveType.custom(pattern: "same")
         let b = ActiveType.custom(pattern: "same")
-        var ha = Hasher()
-        var hb = Hasher()
-        a.hash(into: &ha)
-        b.hash(into: &hb)
-        XCTAssertEqual(ha.finalize(), hb.finalize())
+        // Hashable contract: a == b implies a.hashValue == b.hashValue.
+        XCTAssertEqual(a.hashValue, b.hashValue)
+    }
+
+    func testUnequalCustomCasesHaveDifferentHashValues() {
+        // Not contractually required, but a regression signal for synthesized
+        // Hashable on a String-payload enum.
+        XCTAssertNotEqual(
+            ActiveType.custom(pattern: "abc").hashValue,
+            ActiveType.custom(pattern: "xyz").hashValue
+        )
     }
 }

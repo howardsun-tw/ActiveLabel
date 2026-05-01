@@ -185,11 +185,17 @@ final class HashableSynthesisTests: XCTestCase {
     func testHashConsistencyWithEquality() {
         let a = ActiveType.custom(pattern: "same")
         let b = ActiveType.custom(pattern: "same")
-        var ha = Hasher()
-        var hb = Hasher()
-        a.hash(into: &ha)
-        b.hash(into: &hb)
-        XCTAssertEqual(ha.finalize(), hb.finalize())
+        // Hashable contract: a == b implies a.hashValue == b.hashValue.
+        XCTAssertEqual(a.hashValue, b.hashValue)
+    }
+
+    func testUnequalCustomCasesHaveDifferentHashValues() {
+        // Not contractually required, but a regression signal for synthesized
+        // Hashable on a String-payload enum.
+        XCTAssertNotEqual(
+            ActiveType.custom(pattern: "abc").hashValue,
+            ActiveType.custom(pattern: "xyz").hashValue
+        )
     }
 }
 ```
@@ -201,28 +207,28 @@ Open `ActiveLabel.xcodeproj/project.pbxproj` and add three entries — pattern o
 In the `PBXBuildFile section` (look for the line containing `ActiveTypeTests.swift in Sources`), add a sibling line above or below it:
 
 ```
-		AA000001 /* HashableSynthesisTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002 /* HashableSynthesisTests.swift */; };
+		ACAE74C901B54717BF441D0B /* HashableSynthesisTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9811477630164E5382C7EDFB /* HashableSynthesisTests.swift */; };
 ```
 
 In the `PBXFileReference section`:
 
 ```
-		AA000002 /* HashableSynthesisTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HashableSynthesisTests.swift; sourceTree = "<group>"; };
+		9811477630164E5382C7EDFB /* HashableSynthesisTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HashableSynthesisTests.swift; sourceTree = "<group>"; };
 ```
 
 In the `ActiveLabelTests` `PBXGroup.children` array:
 
 ```
-				AA000002 /* HashableSynthesisTests.swift */,
+				9811477630164E5382C7EDFB /* HashableSynthesisTests.swift */,
 ```
 
 In the `ActiveLabelTests` target's `PBXSourcesBuildPhase.files` array:
 
 ```
-				AA000001 /* HashableSynthesisTests.swift in Sources */,
+				ACAE74C901B54717BF441D0B /* HashableSynthesisTests.swift in Sources */,
 ```
 
-(Generate fresh 24-hex-digit IDs if `AA000001`/`AA000002` collide — search for them first.)
+(Generate fresh 24-hex-digit IDs if `ACAE74C901B54717BF441D0B`/`9811477630164E5382C7EDFB` collide — search for them first.)
 
 - [ ] **Step 3: Run the new test, expect pass (synthesis already works alongside the manual impl)**
 
