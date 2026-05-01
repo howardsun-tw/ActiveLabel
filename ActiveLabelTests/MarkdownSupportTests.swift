@@ -273,6 +273,49 @@ final class MarkdownSupportTests: XCTestCase {
         XCTAssertEqual(elements.first { $0.original == afterURL }?.range, text.range(of: afterTrimmed))
     }
 
+    func testMarkdownBareURLBeforeIdenticalExplicitLinkTrimsOnlyBareURL() {
+        let label = ActiveLabel()
+        let url = "https://example.com/path"
+        let trimmed = String(url.prefix(8)) + "..."
+        label.urlMaximumLength = 8
+        label.markdownText = "\(url) [\(url)](\(url))"
+
+        XCTAssertEqual(label.text, "\(trimmed) \(url)")
+        let elements = urlElements(in: label)
+        XCTAssertEqual(elements.count, 2)
+        XCTAssertEqual(elements.map { $0.original }, [url, url])
+        XCTAssertEqual(elements.first { $0.trimmed == trimmed }?.range, (label.text! as NSString).range(of: trimmed))
+        XCTAssertEqual(elements.first { $0.trimmed == url }?.range, (label.text! as NSString).range(of: url))
+    }
+
+    func testMarkdownExplicitLinkBeforeIdenticalBareURLTrimsOnlyBareURL() {
+        let label = ActiveLabel()
+        let url = "https://example.com/path"
+        let trimmed = String(url.prefix(8)) + "..."
+        label.urlMaximumLength = 8
+        label.markdownText = "[\(url)](\(url)) \(url)"
+
+        XCTAssertEqual(label.text, "\(url) \(trimmed)")
+        let elements = urlElements(in: label)
+        XCTAssertEqual(elements.count, 2)
+        XCTAssertEqual(elements.map { $0.original }, [url, url])
+        XCTAssertEqual(elements.first { $0.trimmed == trimmed }?.range, (label.text! as NSString).range(of: trimmed))
+        XCTAssertEqual(elements.first { $0.trimmed == url }?.range, (label.text! as NSString).range(of: url))
+    }
+
+    func testMarkdownDuplicateIdenticalExplicitLinksBothRemainProtected() {
+        let label = ActiveLabel()
+        let url = "https://example.com/path"
+        label.urlMaximumLength = 8
+        label.markdownText = "[\(url)](\(url)) [\(url)](\(url))"
+
+        XCTAssertEqual(label.text, "\(url) \(url)")
+        let elements = urlElements(in: label)
+        XCTAssertEqual(elements.count, 2)
+        XCTAssertEqual(elements.map { $0.original }, [url, url])
+        XCTAssertEqual(elements.map { $0.trimmed }, [url, url])
+    }
+
     func testActiveElementSpanningMixedMarkdownRunsPreservesRunAttributes() throws {
         let label = ActiveLabel()
         label.markdownText = "**#ta**g"
