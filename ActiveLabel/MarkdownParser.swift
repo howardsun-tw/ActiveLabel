@@ -126,18 +126,17 @@ enum MarkdownParser {
         // Walk source and output link events together so a bare URL cannot
         // consume an identical explicit Markdown link.
         for group in linkGroups {
-            while eventIndex < sourceEvents.count {
-                let event = sourceEvents[eventIndex]
-                eventIndex += 1
+            guard eventIndex < sourceEvents.count else { break }
 
-                guard event.url == group.url, event.visibleText == group.visibleText else {
-                    continue
-                }
+            let event = sourceEvents[eventIndex]
+            eventIndex += 1
 
-                if event.kind == .explicit {
-                    links.append(MarkdownLink(range: group.range, url: event.url))
-                }
-                break
+            guard event.url == group.url, event.visibleText == group.visibleText else {
+                continue
+            }
+
+            if event.kind == .explicit {
+                links.append(MarkdownLink(range: group.range, url: event.url))
             }
         }
 
@@ -212,6 +211,7 @@ enum MarkdownParser {
             guard let url = match.url,
                   url.scheme?.lowercased() != "mailto",
                   match.range.length > 2,
+                  !isInsideBracketedText(match.range, in: markdown),
                   !excludedRanges.contains(where: { ActiveBuilder.rangesOverlap($0, match.range) }) else {
                 return nil
             }
@@ -241,9 +241,47 @@ enum MarkdownParser {
         return String(parsed.characters)
     }
 
+    private static func isInsideBracketedText(_ range: NSRange, in markdown: String) -> Bool {
+        guard let stringRange = Range(range, in: markdown) else { return false }
+
+        var index = stringRange.lowerBound
+        var foundOpeningBracket = false
+        while index > markdown.startIndex {
+            let previous = markdown.index(before: index)
+            if !isEscaped(previous, in: markdown) {
+                if markdown[previous] == "]" || markdown[previous].isNewline {
+                    return false
+                }
+                if markdown[previous] == "[" {
+                    foundOpeningBracket = true
+                    break
+                }
+            }
+            index = previous
+        }
+
+        guard foundOpeningBracket else { return false }
+
+        index = stringRange.upperBound
+        while index < markdown.endIndex {
+            if !isEscaped(index, in: markdown) {
+                if markdown[index] == "[" || markdown[index].isNewline {
+                    return false
+                }
+                if markdown[index] == "]" {
+                    return true
+                }
+            }
+            index = markdown.index(after: index)
+        }
+
+        return false
+    }
+
     private static func isImageLinkStart(_ index: String.Index, in markdown: String) -> Bool {
         guard index > markdown.startIndex else { return false }
-        return markdown[markdown.index(before: index)] == "!"
+        let previous = markdown.index(before: index)
+        return markdown[previous] == "!" && !isEscaped(previous, in: markdown)
     }
 
     private static func isEscaped(_ index: String.Index, in markdown: String) -> Bool {
@@ -320,30 +358,103 @@ enum MarkdownParser {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
+        let rawDestination: String
+        let destinationEnd: String.Index
+
         if trimmed.first == "<", let closingIndex = trimmed.firstIndex(of: ">") {
             let destinationStart = trimmed.index(after: trimmed.startIndex)
             guard destinationStart <= closingIndex else { return nil }
-            return String(trimmed[destinationStart..<closingIndex])
-        }
+            rawDestination = String(trimmed[destinationStart..<closingIndex])
+            destinationEnd = trimmed.index(after: closingIndex)
+        } else {
+            var index = trimmed.startIndex
+            var depth = 0
 
-        var index = trimmed.startIndex
-        var depth = 0
+            while index < trimmed.endIndex {
+                let character = trimmed[index]
+                if character == "\\" {
+                    let nextIndex = trimmed.index(after: index)
+                    index = nextIndex < trimmed.endIndex ? trimmed.index(after: nextIndex) : nextIndex
+                    continue
+                } else if character == "(" {
+                    depth += 1
+                } else if character == ")" {
+                    depth = max(0, depth - 1)
+                } else if depth == 0, isWhitespace(character) {
+                    break
+                }
 
-        while index < trimmed.endIndex {
-            let character = trimmed[index]
-            if character == "(" {
-                depth += 1
-            } else if character == ")" {
-                depth = max(0, depth - 1)
-            } else if depth == 0, character.unicodeScalars.allSatisfy({ CharacterSet.whitespacesAndNewlines.contains($0) }) {
-                break
+                index = trimmed.index(after: index)
             }
 
-            index = trimmed.index(after: index)
+            guard index > trimmed.startIndex else { return nil }
+            rawDestination = String(trimmed[..<index])
+            destinationEnd = index
         }
 
-        guard index > trimmed.startIndex else { return nil }
-        return String(trimmed[..<index])
+        let title = String(trimmed[destinationEnd...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard title.isEmpty || isValidLinkTitle(title) else { return nil }
+
+        return unescapedMarkdownEscapes(in: rawDestination)
+    }
+
+    private static func isValidLinkTitle(_ title: String) -> Bool {
+        guard let first = title.first else { return true }
+
+        let closingCharacter: Character
+        switch first {
+        case "\"":
+            closingCharacter = "\""
+        case "'":
+            closingCharacter = "'"
+        case "(":
+            closingCharacter = ")"
+        default:
+            return false
+        }
+
+        var index = title.index(after: title.startIndex)
+        while index < title.endIndex {
+            if isEscaped(index, in: title) {
+                index = title.index(after: index)
+                continue
+            }
+
+            if title[index] == closingCharacter {
+                let restStart = title.index(after: index)
+                let rest = String(title[restStart...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                return rest.isEmpty
+            }
+
+            index = title.index(after: index)
+        }
+
+        return false
+    }
+
+    private static func unescapedMarkdownEscapes(in text: String) -> String {
+        var output = ""
+        var index = text.startIndex
+
+        while index < text.endIndex {
+            if text[index] == "\\" {
+                let nextIndex = text.index(after: index)
+                if nextIndex < text.endIndex {
+                    output.append(text[nextIndex])
+                    index = text.index(after: nextIndex)
+                    continue
+                }
+            }
+
+            output.append(text[index])
+            index = text.index(after: index)
+        }
+
+        return output
+    }
+
+    private static func isWhitespace(_ character: Character) -> Bool {
+        return character.unicodeScalars.allSatisfy { CharacterSet.whitespacesAndNewlines.contains($0) }
     }
 
     private struct BlockDescriptor {
