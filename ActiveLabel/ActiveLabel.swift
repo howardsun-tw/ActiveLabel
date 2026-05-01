@@ -16,7 +16,7 @@ public protocol ActiveLabelDelegate: AnyObject {
 public typealias ConfigureLinkAttribute = (ActiveType, [NSAttributedString.Key : Any], Bool) -> ([NSAttributedString.Key : Any])
 typealias ElementTuple = (range: NSRange, element: ActiveElement, type: ActiveType)
 
-@IBDesignable open class ActiveLabel: UILabel {
+open class ActiveLabel: UILabel {
     
     // MARK: - public properties
     open weak var delegate: ActiveLabelDelegate?
@@ -27,22 +27,22 @@ typealias ElementTuple = (range: NSRange, element: ActiveElement, type: ActiveTy
     
     open var configureLinkAttribute: ConfigureLinkAttribute?
     
-    @IBInspectable open var mentionColor: UIColor = .blue {
+    open var mentionColor: UIColor = .blue {
         didSet { updateTextStorage(parseText: false) }
     }
-    @IBInspectable open var mentionSelectedColor: UIColor? {
+    open var mentionSelectedColor: UIColor? {
         didSet { updateTextStorage(parseText: false) }
     }
-    @IBInspectable open var hashtagColor: UIColor = .blue {
+    open var hashtagColor: UIColor = .blue {
         didSet { updateTextStorage(parseText: false) }
     }
-    @IBInspectable open var hashtagSelectedColor: UIColor? {
+    open var hashtagSelectedColor: UIColor? {
         didSet { updateTextStorage(parseText: false) }
     }
-    @IBInspectable open var URLColor: UIColor = .blue {
+    open var URLColor: UIColor = .blue {
         didSet { updateTextStorage(parseText: false) }
     }
-    @IBInspectable open var URLSelectedColor: UIColor? {
+    open var URLSelectedColor: UIColor? {
         didSet { updateTextStorage(parseText: false) }
     }
     open var customColor: [ActiveType : UIColor] = [:] {
@@ -51,13 +51,13 @@ typealias ElementTuple = (range: NSRange, element: ActiveElement, type: ActiveTy
     open var customSelectedColor: [ActiveType : UIColor] = [:] {
         didSet { updateTextStorage(parseText: false) }
     }
-    @IBInspectable public var lineSpacing: CGFloat = 0 {
+    public var lineSpacing: CGFloat = 0 {
         didSet { updateTextStorage(parseText: false) }
     }
-    @IBInspectable public var minimumLineHeight: CGFloat = 0 {
+    public var minimumLineHeight: CGFloat = 0 {
         didSet { updateTextStorage(parseText: false) }
     }
-    @IBInspectable public var highlightFontName: String? = nil {
+    public var highlightFontName: String? = nil {
         didSet { updateTextStorage(parseText: false) }
     }
     public var highlightFontSize: CGFloat? = nil {
@@ -156,13 +156,11 @@ typealias ElementTuple = (range: NSRange, element: ActiveElement, type: ActiveTy
     // MARK: - init functions
     override public init(frame: CGRect) {
         super.init(frame: frame)
-        _customizing = false
         setupLabel()
     }
-    
+
     required public init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
-        _customizing = false
         setupLabel()
     }
     
@@ -277,7 +275,7 @@ typealias ElementTuple = (range: NSRange, element: ActiveElement, type: ActiveTy
     }
     
     // MARK: - private properties
-    fileprivate var _customizing: Bool = true
+    fileprivate var _customizing: Bool = false
     fileprivate var defaultCustomColor: UIColor = .black
     
     internal var mentionTapHandler: ((String) -> ())?
@@ -288,6 +286,7 @@ typealias ElementTuple = (range: NSRange, element: ActiveElement, type: ActiveTy
 
     internal var pendingDeselectTask: Task<Void, Never>?
     internal var onDeselectForTest: (() -> Void)?
+    internal var updateTextStorageCallCount: Int = 0
 
     fileprivate var mentionFilterPredicate: ((String) -> Bool)?
     fileprivate var hashtagFilterPredicate: ((String) -> Bool)?
@@ -311,6 +310,7 @@ typealias ElementTuple = (range: NSRange, element: ActiveElement, type: ActiveTy
     }
     
     fileprivate func updateTextStorage(parseText: Bool = true) {
+        updateTextStorageCallCount += 1
         if _customizing { return }
         // clean up previous active elements
         guard let attributedText = attributedText, attributedText.length > 0 else {

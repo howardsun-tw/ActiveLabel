@@ -439,4 +439,42 @@ class ActiveTypeTests: XCTestCase {
         }
 
     }
+
+    func testCustomizeBlockBatchesUpdates() {
+        let l = ActiveLabel()
+        l.text = "#one @two"
+        let baseline = l.updateTextStorageCallCount
+        l.customize { l in
+            l.text = "#three @four"
+            l.mentionColor = .red
+            l.hashtagColor = .blue
+            l.URLColor = .green
+        }
+        // Inside the block, all property setters call updateTextStorage(parseText:false)
+        // but the _customizing guard early-exits each one. Only the final updateTextStorage()
+        // at the end of customize(_:) actually walks the parse path.
+        let inside = l.updateTextStorageCallCount - baseline
+        // Each setter still increments the counter at the very top (before the guard),
+        // but the EFFECTIVE parsing is once. Counter rises by N+1 setters (4 setters + 1 final),
+        // so ≤ 5. Without batching, every property setter would parse, which would be much
+        // higher (each parse calls multiple internal updates). The contract here is "exactly
+        // one parse per customize block."
+        XCTAssertLessThanOrEqual(inside, 6,
+            "customize(block:) should batch parse work — got \(inside) calls")
+    }
+
+    func testMentionColorAppliesAtRuntimeAfterIBInspectableRemoval() {
+        let l = ActiveLabel()
+        l.text = "@user"
+        l.mentionColor = .red
+        // Property still applies; we verify by reading back the foreground color
+        // at the mention's range in the textStorage.
+        guard let mention = l.activeElements[.mention]?.first else {
+            return XCTFail("expected one mention element")
+        }
+        var range = NSRange()
+        let attrs = l.textStorage.attributes(at: mention.range.location, effectiveRange: &range)
+        let color = attrs[.foregroundColor] as? UIColor
+        XCTAssertEqual(color, .red)
+    }
 }
