@@ -42,7 +42,7 @@
 xcodebuild test \
   -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj \
   -scheme ActiveLabel \
-  -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+  -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' \
   -only-testing:ActiveLabelTests \
   2>&1 | tail -40
 ```
@@ -52,7 +52,7 @@ xcodebuild test \
 xcodebuild test \
   -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj \
   -scheme ActiveLabel \
-  -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+  -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' \
   -only-testing:ActiveLabelTests/<TestClass>/<testMethod> \
   2>&1 | tail -40
 ```
@@ -75,7 +75,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 
 - [ ] **Step 1: Lock the green baseline locally**
 
-Run: `xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests 2>&1 | tail -40`
+Run: `xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests 2>&1 | tail -40`
 
 Expected: `** TEST SUCCEEDED **`. If anything fails, stop and report; do not proceed.
 
@@ -233,7 +233,7 @@ In the `ActiveLabelTests` target's `PBXSourcesBuildPhase.files` array:
 - [ ] **Step 3: Run the new test, expect pass (synthesis already works alongside the manual impl)**
 
 ```bash
-xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests/HashableSynthesisTests 2>&1 | tail -40
+xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests/HashableSynthesisTests 2>&1 | tail -40
 ```
 
 Expected: PASS. The manual impl in `ActiveType.swift:47-68` is currently equivalent. This locks behavior before deletion.
@@ -310,7 +310,7 @@ public enum ActiveType: Hashable {
 - [ ] **Step 5: Run the full test suite, expect all green**
 
 ```bash
-xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests 2>&1 | tail -40
+xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests 2>&1 | tail -40
 ```
 
 Expected: `** TEST SUCCEEDED **`.
@@ -345,7 +345,7 @@ EOF
 - [ ] **Step 1: Run baseline tests, confirm green**
 
 ```bash
-xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests 2>&1 | tail -40
+xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests 2>&1 | tail -40
 ```
 
 Expected: `** TEST SUCCEEDED **`.
@@ -371,7 +371,7 @@ public protocol ActiveLabelDelegate: AnyObject {
 - [ ] **Step 3: Run tests, confirm still green**
 
 ```bash
-xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests 2>&1 | tail -40
+xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests 2>&1 | tail -40
 ```
 
 Expected: `** TEST SUCCEEDED **`. The Swift 4.2 deprecation warning for `class` is also gone now.
@@ -405,7 +405,7 @@ EOF
 - [ ] **Step 1: Run baseline tests, confirm green**
 
 ```bash
-xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests 2>&1 | tail -40
+xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests 2>&1 | tail -40
 ```
 
 Expected: `** TEST SUCCEEDED **`.
@@ -457,7 +457,7 @@ Use grep to find them: `grep -n StringTrimExtension /Users/howardsun/Documents/f
 - [ ] **Step 6: Run tests, confirm still green**
 
 ```bash
-xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests 2>&1 | tail -40
+xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests 2>&1 | tail -40
 ```
 
 Expected: `** TEST SUCCEEDED **`. In particular, `testStringTrimming`, `testStringTrimmingURLShorterThanLimit`, and `testStringTrimmingURLLongerThanLimit` must all pass.
@@ -495,7 +495,7 @@ git -C /Users/howardsun/Documents/funtek/ActiveLabel rm .swift-version
 - [ ] **Step 2: Run tests, confirm still green**
 
 ```bash
-xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests 2>&1 | tail -40
+xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests 2>&1 | tail -40
 ```
 
 Expected: `** TEST SUCCEEDED **`.
@@ -599,7 +599,7 @@ Same pbxproj pattern as Task 1 Step 2, but for `HitTestTests.swift`. Use fresh h
 - [ ] **Step 4: Run the failing test, expect FAIL on `testTapExactlyPastLastGlyphReturnsNil`**
 
 ```bash
-xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests/HitTestTests 2>&1 | tail -40
+xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests/HitTestTests 2>&1 | tail -40
 ```
 
 Expected: `testTapExactlyPastLastGlyphReturnsNil` FAILS (currently `<=` lets a past-end tap match the last element). `testTapInsideElementHits` PASSES.
@@ -623,7 +623,7 @@ to:
 - [ ] **Step 6: Run the full suite, confirm both new tests pass and nothing regressed**
 
 ```bash
-xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests 2>&1 | tail -40
+xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests 2>&1 | tail -40
 ```
 
 Expected: `** TEST SUCCEEDED **`.
@@ -663,7 +663,7 @@ EOF
 - [ ] **Step 1: Run baseline tests, confirm green**
 
 ```bash
-xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests 2>&1 | tail -40
+xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests 2>&1 | tail -40
 ```
 
 Expected: `** TEST SUCCEEDED **`.
@@ -757,7 +757,7 @@ Same pbxproj pattern as Task 1.
 - [ ] **Step 4: Run the new tests — most should currently FAIL**
 
 ```bash
-xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests/URLDetectionTests 2>&1 | tail -40
+xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests/URLDetectionTests 2>&1 | tail -40
 ```
 
 Expected:
@@ -887,7 +887,7 @@ Replace with:
 - [ ] **Step 9: Run the full suite, expect all green**
 
 ```bash
-xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests 2>&1 | tail -40
+xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests 2>&1 | tail -40
 ```
 
 Expected: `** TEST SUCCEEDED **`.
@@ -1021,7 +1021,7 @@ Append to `ActiveLabelTests/HitTestTests.swift` inside the `HitTestTests` class:
 - [ ] **Step 2: Run new tests, expect compile FAIL** (the test seams `simulateTapEnded`, `pendingDeselectTask`, `onDeselectForTest` don't exist yet — this is the failing-red state)
 
 ```bash
-xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests/HitTestTests 2>&1 | tail -40
+xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests/HitTestTests 2>&1 | tail -40
 ```
 
 Expected: COMPILE FAIL on the new methods. Confirms the test uses an API not yet implemented.
@@ -1119,7 +1119,7 @@ In `ActiveLabel/ActiveLabel.swift`:
 - [ ] **Step 4: Run new tests, expect PASS**
 
 ```bash
-xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests/HitTestTests 2>&1 | tail -40
+xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests/HitTestTests 2>&1 | tail -40
 ```
 
 Expected: PASS for both new tests.
@@ -1127,7 +1127,7 @@ Expected: PASS for both new tests.
 - [ ] **Step 5: Run the full suite, confirm no regressions**
 
 ```bash
-xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests 2>&1 | tail -40
+xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests 2>&1 | tail -40
 ```
 
 Expected: `** TEST SUCCEEDED **`.
@@ -1165,7 +1165,7 @@ EOF
 - [ ] **Step 1: Run baseline tests, confirm green**
 
 ```bash
-xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests 2>&1 | tail -40
+xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests 2>&1 | tail -40
 ```
 
 Expected: `** TEST SUCCEEDED **`.
@@ -1321,7 +1321,7 @@ Append to `ActiveLabelTests/ActiveTypeTests.swift` inside `ActiveTypeTests`:
 - [ ] **Step 7: Run the full suite, confirm green**
 
 ```bash
-xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests 2>&1 | tail -40
+xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests 2>&1 | tail -40
 ```
 
 Expected: `** TEST SUCCEEDED **`.
@@ -1372,7 +1372,7 @@ Append to `ActiveLabelTests/ActiveTypeTests.swift` inside `ActiveTypeTests`:
 - [ ] **Step 2: Run new test, expect FAIL**
 
 ```bash
-xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests/ActiveTypeTests/testDefaultEnabledTypesIncludeEmail 2>&1 | tail -40
+xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests/ActiveTypeTests/testDefaultEnabledTypesIncludeEmail 2>&1 | tail -40
 ```
 
 Expected: FAIL.
@@ -1394,7 +1394,7 @@ to:
 - [ ] **Step 4: Run the full suite, confirm green**
 
 ```bash
-xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests 2>&1 | tail -40
+xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests 2>&1 | tail -40
 ```
 
 Expected: `** TEST SUCCEEDED **`.
@@ -1429,7 +1429,7 @@ EOF
 - [ ] **Step 1: Run baseline tests, confirm green**
 
 ```bash
-xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests 2>&1 | tail -40
+xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests 2>&1 | tail -40
 ```
 
 Expected: `** TEST SUCCEEDED **`.
@@ -1445,7 +1445,7 @@ Verify no references break: `grep -n "fileprivate" ActiveLabel/ActiveLabel.swift
 - [ ] **Step 3: Run the full suite, confirm green**
 
 ```bash
-xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests 2>&1 | tail -40
+xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests 2>&1 | tail -40
 ```
 
 Expected: `** TEST SUCCEEDED **`.
@@ -1586,7 +1586,7 @@ Create `CHANGELOG.md`:
 - [ ] **Step 5: Run the full suite one last time**
 
 ```bash
-xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -only-testing:ActiveLabelTests 2>&1 | tail -40
+xcodebuild test -project /Users/howardsun/Documents/funtek/ActiveLabel/ActiveLabel.xcodeproj -scheme ActiveLabel -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' -only-testing:ActiveLabelTests 2>&1 | tail -40
 ```
 
 Expected: `** TEST SUCCEEDED **`.
