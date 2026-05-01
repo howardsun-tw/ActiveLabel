@@ -443,7 +443,7 @@ typealias ElementTuple = (range: NSRange, element: ActiveElement, type: ActiveTy
         setNeedsDisplay()
     }
     
-    fileprivate func element(at location: CGPoint) -> ElementTuple? {
+    internal func element(at location: CGPoint) -> ElementTuple? {
         guard textStorage.length > 0 else {
             return nil
         }
@@ -458,7 +458,7 @@ typealias ElementTuple = (range: NSRange, element: ActiveElement, type: ActiveTy
         let index = layoutManager.glyphIndex(for: correctLocation, in: textContainer)
         
         for element in activeElements.map({ $0.1 }).joined() {
-            if index >= element.range.location && index <= element.range.location + element.range.length {
+            if index >= element.range.location && index < element.range.location + element.range.length {
                 return element
             }
         }
