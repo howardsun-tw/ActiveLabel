@@ -34,6 +34,7 @@ enum MarkdownParser {
         let output = NSMutableAttributedString(string: "")
         var links: [MarkdownLink] = []
         var currentBlockIdentity: Int?
+        var currentListItemIdentity: Int?
 
         for run in parsed.runs {
             let runText = String(parsed.characters[run.range])
@@ -44,10 +45,12 @@ enum MarkdownParser {
                 if output.length > 0 {
                     output.append(NSAttributedString(string: "\n", attributes: [.font: baseFont]))
                 }
-                if !block.prefix.isEmpty {
-                    output.append(NSAttributedString(string: block.prefix, attributes: [.font: baseFont]))
+                let prefix = block.prefix(isContinuingListItem: block.listItemIdentity == currentListItemIdentity)
+                if !prefix.isEmpty {
+                    output.append(NSAttributedString(string: prefix, attributes: [.font: baseFont]))
                 }
                 currentBlockIdentity = block.identity
+                currentListItemIdentity = block.listItemIdentity
             }
 
             let location = output.length
@@ -79,12 +82,18 @@ enum MarkdownParser {
 
     private struct BlockDescriptor {
         let identity: Int
-        let prefix: String
+        let primaryPrefix: String
+        let continuationPrefix: String
+        let listItemIdentity: Int?
+
+        func prefix(isContinuingListItem: Bool) -> String {
+            isContinuingListItem ? continuationPrefix : primaryPrefix
+        }
     }
 
     private static func blockDescriptor(for intent: PresentationIntent?) -> BlockDescriptor {
         guard let intent else {
-            return BlockDescriptor(identity: -1, prefix: "")
+            return BlockDescriptor(identity: -1, primaryPrefix: "", continuationPrefix: "", listItemIdentity: nil)
         }
 
         var paragraphIdentity: Int?
@@ -97,7 +106,12 @@ enum MarkdownParser {
         for component in intent.components {
             switch component.kind {
             case .header:
-                return BlockDescriptor(identity: component.identity, prefix: "")
+                return BlockDescriptor(
+                    identity: component.identity,
+                    primaryPrefix: "",
+                    continuationPrefix: "",
+                    listItemIdentity: nil
+                )
             case .paragraph:
                 paragraphIdentity = component.identity
             case .blockQuote:
@@ -116,18 +130,39 @@ enum MarkdownParser {
 
         if let listItemIdentity {
             if unorderedList {
-                return BlockDescriptor(identity: listItemIdentity, prefix: "• ")
+                return BlockDescriptor(
+                    identity: paragraphIdentity ?? listItemIdentity,
+                    primaryPrefix: "• ",
+                    continuationPrefix: "  ",
+                    listItemIdentity: listItemIdentity
+                )
             }
             if orderedList, let ordinal {
-                return BlockDescriptor(identity: listItemIdentity, prefix: "\(ordinal). ")
+                let prefix = "\(ordinal). "
+                return BlockDescriptor(
+                    identity: paragraphIdentity ?? listItemIdentity,
+                    primaryPrefix: prefix,
+                    continuationPrefix: String(repeating: " ", count: prefix.count),
+                    listItemIdentity: listItemIdentity
+                )
             }
         }
 
         if let blockQuoteIdentity {
-            return BlockDescriptor(identity: blockQuoteIdentity, prefix: "> ")
+            return BlockDescriptor(
+                identity: paragraphIdentity ?? blockQuoteIdentity,
+                primaryPrefix: "> ",
+                continuationPrefix: "> ",
+                listItemIdentity: nil
+            )
         }
 
-        return BlockDescriptor(identity: paragraphIdentity ?? -1, prefix: "")
+        return BlockDescriptor(
+            identity: paragraphIdentity ?? -1,
+            primaryPrefix: "",
+            continuationPrefix: "",
+            listItemIdentity: nil
+        )
     }
 
     private static func attributes(baseFont: UIFont,

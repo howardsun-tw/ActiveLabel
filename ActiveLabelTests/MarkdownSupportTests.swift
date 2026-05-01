@@ -12,6 +12,12 @@ final class MarkdownSupportTests: XCTestCase {
         return font ?? UIFont.systemFont(ofSize: 1)
     }
 
+    private func range(in attributedString: NSAttributedString, matching text: String) -> NSRange {
+        let range = (attributedString.string as NSString).range(of: text)
+        XCTAssertNotEqual(range.location, NSNotFound, "Expected to find \(text)")
+        return range
+    }
+
     func testMarkdownParserAppliesInlineStylesAndLinks() {
         let result = MarkdownParser.parse(
             "Hello **bold**, *italic*, `code`, [Apple](https://apple.com)",
@@ -62,5 +68,68 @@ final class MarkdownSupportTests: XCTestCase {
 
         XCTAssertEqual(result.attributedString.string, "[broken link](")
         XCTAssertEqual(result.links.count, 0)
+    }
+
+    func testMarkdownParserPreservesParagraphsInsideBlockQuotes() {
+        let result = MarkdownParser.parse(
+            """
+            > a
+            >
+            > b
+            """,
+            baseFont: baseFont
+        )
+
+        XCTAssertEqual(result.attributedString.string, "> a\n> b")
+    }
+
+    func testMarkdownParserPreservesParagraphsInsideListItems() {
+        let result = MarkdownParser.parse(
+            """
+            - first
+
+              second
+            """,
+            baseFont: baseFont
+        )
+
+        XCTAssertEqual(result.attributedString.string, "• first\n  second")
+    }
+
+    func testMarkdownParserBuildsOrderedLists() {
+        let result = MarkdownParser.parse(
+            """
+            1. one
+            2. two
+            """,
+            baseFont: baseFont
+        )
+
+        XCTAssertEqual(result.attributedString.string, "1. one\n2. two")
+    }
+
+    func testMarkdownParserTracksMultipleUnicodeLinks() {
+        let result = MarkdownParser.parse(
+            "[🍎](https://apple.com) and [台灣](https://example.tw)",
+            baseFont: baseFont
+        )
+
+        XCTAssertEqual(result.attributedString.string, "🍎 and 台灣")
+        XCTAssertEqual(result.links.count, 2)
+        XCTAssertEqual(result.links[0].url.absoluteString, "https://apple.com")
+        XCTAssertEqual(result.links[0].range, range(in: result.attributedString, matching: "🍎"))
+        XCTAssertEqual(result.links[1].url.absoluteString, "https://example.tw")
+        XCTAssertEqual(result.links[1].range, range(in: result.attributedString, matching: "台灣"))
+    }
+
+    func testMarkdownParserAppliesStrikethrough() {
+        let result = MarkdownParser.parse("This is ~~gone~~", baseFont: baseFont)
+        let range = range(in: result.attributedString, matching: "gone")
+
+        XCTAssertEqual(result.attributedString.string, "This is gone")
+        XCTAssertEqual(
+            result.attributedString.attribute(.strikethroughStyle, at: range.location, effectiveRange: nil) as? Int,
+            NSUnderlineStyle.single.rawValue
+        )
     }
 }
