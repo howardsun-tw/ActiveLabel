@@ -4,6 +4,8 @@
 //
 
 import Foundation
+
+#if canImport(UIKit)
 import UIKit
 
 struct MarkdownParseResult {
@@ -641,3 +643,5 @@ enum MarkdownParser {
         }
     }
 }
+
+#endif

@@ -7,6 +7,8 @@
 //
 
 import Foundation
+
+#if canImport(UIKit)
 import UIKit
 
 public protocol ActiveLabelDelegate: AnyObject {
@@ -764,3 +766,5 @@ extension ActiveLabel: UIGestureRecognizerDelegate {
         return true
     }
 }
+
+#endif

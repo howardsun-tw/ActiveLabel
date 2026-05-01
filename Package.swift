@@ -13,7 +13,8 @@ let package = Package(
     targets: [
         .target(
             name: "ActiveLabel",
-            path: "ActiveLabel"
+            path: "ActiveLabel",
+            exclude: ["Info.plist"]
         )
     ]
 )

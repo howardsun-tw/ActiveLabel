@@ -8,6 +8,8 @@
 
 import Foundation
 
+#if canImport(UIKit)
+
 typealias ActiveFilterPredicate = ((String) -> Bool)
 
 struct TextReplacement {
@@ -155,3 +157,5 @@ struct ActiveBuilder {
         return elements
     }
 }
+
+#endif
