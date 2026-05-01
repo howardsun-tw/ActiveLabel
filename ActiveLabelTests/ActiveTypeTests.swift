@@ -198,8 +198,12 @@ class ActiveTypeTests: XCTestCase {
         XCTAssertEqual(currentElementString, "pic.twitter.com/YUGdEbUx")
         XCTAssertEqual(currentElementType, ActiveType.url)
 
+        // 2.0 BEHAVIOR CHANGE: NSDataDetector matches bare domains.
+        // See spec §5.1 and CHANGELOG 2.0.0.
         label.text = "google.com"
-        XCTAssertEqual(activeElements.count, 0)
+        XCTAssertEqual(activeElements.count, 1)
+        XCTAssertEqual(currentElementString, "google.com")
+        XCTAssertEqual(currentElementType, ActiveType.url)
     }
 
     func testCustomType() {

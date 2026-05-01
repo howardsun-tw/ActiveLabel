@@ -25,32 +25,51 @@ struct ActiveBuilder {
         }
     }
 
-    static func createURLElements(from text: String, range: NSRange, maximumLength: Int?) -> ([ElementTuple], String) {
-        let type = ActiveType.url
-        var text = text
-        let matches = RegexParser.getElements(from: text, with: type.pattern, range: range)
-        let nsstring = text as NSString
-        var elements: [ElementTuple] = []
+    @MainActor private static let urlDetector: NSDataDetector? =
+        try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
 
-        for match in matches where match.range.length > 2 {
-            let word = nsstring.substring(with: match.range)
-                .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+    @MainActor static func createURLElements(from text: String,
+                                             range: NSRange,
+                                             maximumLength: Int?) -> ([ElementTuple], String) {
+        guard let detector = urlDetector else { return ([], text) }
+        let originalNSString = text as NSString
+        var working = text
+
+        let matches = detector.matches(in: text, options: [], range: range)
+            .filter { $0.url?.scheme?.lowercased() != "mailto" }
+            .filter { $0.range.length > 2 }
+
+        var elements: [ElementTuple] = []
+        // Cumulative shift between original-text locations and `working`
+        // locations after prior splices to the LEFT of the current match.
+        var offset = 0
+
+        // Walk left-to-right so each splice only shifts ranges that have
+        // not yet been processed. Track a running offset to translate
+        // each match's original location into its position in `working`.
+        for match in matches {
+            let word = originalNSString.substring(with: match.range)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            let liveLocation = match.range.location + offset
+            let liveRange = NSRange(location: liveLocation, length: match.range.length)
 
             guard let maxLength = maximumLength, word.count > maxLength else {
-                let range = maximumLength == nil ? match.range : (text as NSString).range(of: word)
-                let element = ActiveElement.create(with: type, text: word)
-                elements.append((range, element, type))
+                let element = ActiveElement.create(with: .url, text: word)
+                elements.append((liveRange, element, .url))
                 continue
             }
 
-            let trimmedWord = String(word.prefix(maxLength)) + "..."
-            text = text.replacingOccurrences(of: word, with: trimmedWord)
+            let trimmed = String(word.prefix(maxLength)) + "..."
+            let trimmedNSLength = (trimmed as NSString).length
+            working = (working as NSString).replacingCharacters(in: liveRange, with: trimmed)
+            offset += trimmedNSLength - liveRange.length
 
-            let newRange = (text as NSString).range(of: trimmedWord)
-            let element = ActiveElement.url(original: word, trimmed: trimmedWord)
-            elements.append((newRange, element, type))
+            let newRange = NSRange(location: liveLocation, length: trimmedNSLength)
+            let element = ActiveElement.url(original: word, trimmed: trimmed)
+            elements.append((newRange, element, .url))
         }
-        return (elements, text)
+        return (elements, working)
     }
 
     private static func createElements(from text: String,

@@ -37,7 +37,7 @@ public enum ActiveType: Hashable {
         switch self {
         case .mention: return RegexParser.mentionPattern
         case .hashtag: return RegexParser.hashtagPattern
-        case .url: return RegexParser.urlPattern
+        case .url: return ""  // unused: URL detection runs through NSDataDetector
         case .email: return RegexParser.emailPattern
         case .custom(let regex): return regex
         }
