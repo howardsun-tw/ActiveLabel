@@ -104,8 +104,8 @@ struct ActiveBuilder {
     }
 
     static func rangesOverlap(_ lhs: NSRange, _ rhs: NSRange) -> Bool {
-        return lhs.location < rhs.location + rhs.length &&
-            rhs.location < lhs.location + lhs.length
+        guard lhs.length > 0, rhs.length > 0 else { return false }
+        return NSIntersectionRange(lhs, rhs).length > 0
     }
 
     private static func createElements(from text: String,

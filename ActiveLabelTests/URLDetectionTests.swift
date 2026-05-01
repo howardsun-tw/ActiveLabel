@@ -19,6 +19,16 @@ final class URLDetectionTests: XCTestCase {
         return nil
     }
 
+    @MainActor private func createURLResult(_ text: String,
+                                            excluding excludedRanges: [NSRange]) -> URLBuildResult {
+        return ActiveBuilder.createURLElements(
+            from: text,
+            range: NSRange(location: 0, length: (text as NSString).length),
+            maximumLength: nil,
+            excluding: excludedRanges
+        )
+    }
+
     // §5.1 row 6: bare domain now matches.
     func testBareDomainMatches() {
         label.text = "google.com"
@@ -107,5 +117,66 @@ final class URLDetectionTests: XCTestCase {
         XCTAssertEqual(result.replacements.first?.range, (text as NSString).range(of: "https://very-long.example/path"))
         XCTAssertEqual(result.replacements.first?.replacement, "https://very-long.ex...")
         XCTAssertEqual(result.replacements.first?.delta, -7)
+    }
+
+    @MainActor func testZeroLengthExcludedRangeInsideURLDoesNotSuppressDetection() {
+        let text = "Go to https://inside.example now"
+        let urlRange = (text as NSString).range(of: "https://inside.example")
+        let excluded = NSRange(location: urlRange.location + 5, length: 0)
+
+        let result = createURLResult(text, excluding: [excluded])
+
+        XCTAssertEqual(result.elements.count, 1)
+        XCTAssertEqual(result.elements.first?.range, urlRange)
+        XCTAssertEqual(result.elements.first.flatMap { urlString($0.element) }, "https://inside.example")
+    }
+
+    @MainActor func testAdjacentExcludedRangeDoesNotSuppressURLDetection() {
+        let text = "Go to https://adjacent.example now"
+        let urlRange = (text as NSString).range(of: "https://adjacent.example")
+        let excluded = NSRange(location: urlRange.location + urlRange.length, length: 1)
+
+        let result = createURLResult(text, excluding: [excluded])
+
+        XCTAssertEqual(result.elements.count, 1)
+        XCTAssertEqual(result.elements.first?.range, urlRange)
+        XCTAssertEqual(result.elements.first.flatMap { urlString($0.element) }, "https://adjacent.example")
+    }
+
+    @MainActor func testPartiallyOverlappingExcludedRangeSuppressesURLDetection() {
+        let text = "Go to https://partial.example now"
+        let urlRange = (text as NSString).range(of: "https://partial.example")
+        let excluded = NSRange(location: urlRange.location + 8, length: 7)
+
+        let result = createURLResult(text, excluding: [excluded])
+
+        XCTAssertEqual(result.elements.count, 0)
+        XCTAssertEqual(result.text, text)
+        XCTAssertEqual(result.replacements.count, 0)
+    }
+
+    @MainActor func testExcludedRangeOnlySkipsMatchingURLWhenMultipleURLsExist() {
+        let text = "Go to https://one.example and https://two.example now"
+        let firstURLRange = (text as NSString).range(of: "https://one.example")
+        let secondURLRange = (text as NSString).range(of: "https://two.example")
+
+        let result = createURLResult(text, excluding: [secondURLRange])
+
+        XCTAssertEqual(result.elements.count, 1)
+        XCTAssertEqual(result.elements.first?.range, firstURLRange)
+        XCTAssertEqual(result.elements.first.flatMap { urlString($0.element) }, "https://one.example")
+    }
+
+    @MainActor func testExcludedRangeUsesUTF16CoordinatesWithUnicodePrefix() {
+        let prefix = "Tap 🙂 then "
+        let text = "\(prefix)https://unicode.example now"
+        let nsText = text as NSString
+        let urlRange = nsText.range(of: "https://unicode.example")
+
+        let result = createURLResult(text, excluding: [urlRange])
+
+        XCTAssertEqual(urlRange.location, (prefix as NSString).length)
+        XCTAssertEqual(result.elements.count, 0)
+        XCTAssertEqual(result.text, text)
     }
 }
