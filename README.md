@@ -15,7 +15,7 @@ UILabel drop-in replacement supporting Hashtags (#), Mentions (@), URLs (http://
 
 ![](ActiveLabelDemo/demo.gif)
 
-## Install (iOS 10+)
+## Install (iOS 17+)
 
 ### Carthage
 
@@ -30,7 +30,7 @@ github "optonaut/ActiveLabel.swift"
 CocoaPods 0.36 adds supports for Swift and embedded frameworks. To integrate ActiveLabel into your project add the following to your `Podfile`:
 
 ```ruby
-platform :ios, '10.0'
+platform :ios, '17.0'
 use_frameworks!
 
 pod 'ActiveLabel'
@@ -106,6 +106,29 @@ label.urlMaximumLength = 30
 From now on, a url that's bigger than that, will be trimmed.
 
 `https://afancyurl.com/whatever` -> `https://afancyurl.com/wh...`
+
+## URL detection (2.0)
+
+Starting in 2.0, URL detection uses `NSDataDetector(.link)`. This means
+bare domains like `google.com` are now matched as URLs — the old custom
+regex required a scheme prefix or `www.` / `pic.` heuristic.
+
+If your app needs the stricter old behavior, register a custom type with
+your preferred regex via `ActiveType.custom(pattern:)` and disable
+`.url`.
+
+`mailto:` links are filtered out automatically so the email regex
+pipeline owns those matches.
+
+## Why TextKit 1?
+
+ActiveLabel uses the TextKit 1 layout stack (`NSLayoutManager`,
+`NSTextStorage`, `NSTextContainer`) by design. TextKit 2's wins —
+viewport-driven layout, no glyph API — target large editable documents,
+not short labels. TextKit 2 hit-testing is materially harder than TK1's
+single `glyphIndex(for:in:)` call, and as of early 2026 leading TK2
+practitioners report stability problems Apple hasn't addressed. We will
+revisit if Apple deprecates TextKit 1.
 
 ## API
 
