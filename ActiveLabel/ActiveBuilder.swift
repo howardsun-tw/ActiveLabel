@@ -10,6 +10,21 @@ import Foundation
 
 typealias ActiveFilterPredicate = ((String) -> Bool)
 
+struct TextReplacement {
+    let range: NSRange
+    let replacement: String
+
+    var delta: Int {
+        return (replacement as NSString).length - range.length
+    }
+}
+
+struct URLBuildResult {
+    let elements: [ElementTuple]
+    let text: String
+    let replacements: [TextReplacement]
+}
+
 struct ActiveBuilder {
 
     static func createElements(type: ActiveType, from text: String, range: NSRange, filterPredicate: ActiveFilterPredicate?) -> [ElementTuple] {
@@ -31,15 +46,30 @@ struct ActiveBuilder {
     @MainActor static func createURLElements(from text: String,
                                              range: NSRange,
                                              maximumLength: Int?) -> ([ElementTuple], String) {
-        guard let detector = urlDetector else { return ([], text) }
+        let result = createURLElements(from: text, range: range, maximumLength: maximumLength, excluding: [])
+        return (result.elements, result.text)
+    }
+
+    @MainActor static func createURLElements(from text: String,
+                                             range: NSRange,
+                                             maximumLength: Int?,
+                                             excluding excludedRanges: [NSRange]) -> URLBuildResult {
+        guard let detector = urlDetector else {
+            return URLBuildResult(elements: [], text: text, replacements: [])
+        }
+
         let originalNSString = text as NSString
         var working = text
 
         let matches = detector.matches(in: text, options: [], range: range)
             .filter { $0.url?.scheme?.lowercased() != "mailto" }
             .filter { $0.range.length > 2 }
+            .filter { match in
+                !excludedRanges.contains { rangesOverlap($0, match.range) }
+            }
 
         var elements: [ElementTuple] = []
+        var replacements: [TextReplacement] = []
         // Cumulative shift between original-text locations and `working`
         // locations after prior splices to the LEFT of the current match.
         var offset = 0
@@ -68,8 +98,14 @@ struct ActiveBuilder {
             let newRange = NSRange(location: liveLocation, length: trimmedNSLength)
             let element = ActiveElement.url(original: word, trimmed: trimmed)
             elements.append((newRange, element, .url))
+            replacements.append(TextReplacement(range: match.range, replacement: trimmed))
         }
-        return (elements, working)
+        return URLBuildResult(elements: elements, text: working, replacements: replacements)
+    }
+
+    static func rangesOverlap(_ lhs: NSRange, _ rhs: NSRange) -> Bool {
+        return lhs.location < rhs.location + rhs.length &&
+            rhs.location < lhs.location + lhs.length
     }
 
     private static func createElements(from text: String,

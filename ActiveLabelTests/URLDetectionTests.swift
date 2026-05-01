@@ -75,4 +75,37 @@ final class URLDetectionTests: XCTestCase {
         XCTAssertEqual(originals.filter { $0 == "\(url)/a" }.count, 1)
         XCTAssertEqual(originals.filter { $0 == "\(url)/b" }.count, 1)
     }
+
+    @MainActor func testURLDetectorSkipsExcludedRanges() {
+        let text = "Go to https://inside.example now"
+        let excluded = (text as NSString).range(of: "https://inside.example")
+
+        let result = ActiveBuilder.createURLElements(
+            from: text,
+            range: NSRange(location: 0, length: (text as NSString).length),
+            maximumLength: nil,
+            excluding: [excluded]
+        )
+
+        XCTAssertEqual(result.elements.count, 0)
+        XCTAssertEqual(result.text, text)
+        XCTAssertEqual(result.replacements.count, 0)
+    }
+
+    @MainActor func testURLDetectorReportsTrimReplacement() {
+        let text = "Go to https://very-long.example/path now"
+        let result = ActiveBuilder.createURLElements(
+            from: text,
+            range: NSRange(location: 0, length: (text as NSString).length),
+            maximumLength: 20,
+            excluding: []
+        )
+
+        XCTAssertEqual(result.elements.count, 1)
+        XCTAssertEqual(result.text, "Go to https://very-long.ex... now")
+        XCTAssertEqual(result.replacements.count, 1)
+        XCTAssertEqual(result.replacements.first?.range, (text as NSString).range(of: "https://very-long.example/path"))
+        XCTAssertEqual(result.replacements.first?.replacement, "https://very-long.ex...")
+        XCTAssertEqual(result.replacements.first?.delta, -7)
+    }
 }
