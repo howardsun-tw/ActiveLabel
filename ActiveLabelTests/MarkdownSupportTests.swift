@@ -178,6 +178,17 @@ final class MarkdownSupportTests: XCTestCase {
         XCTAssertEqual(color, expected, file: file, line: line)
     }
 
+    private func assertBackgroundColor(
+        in label: ActiveLabel,
+        at location: Int,
+        equals expected: UIColor?,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let color = label.textStorage.attribute(.backgroundColor, at: location, effectiveRange: nil) as? UIColor
+        XCTAssertEqual(color, expected, file: file, line: line)
+    }
+
     func testMarkdownTextDisplaysLinkTextAndStoresDestinationURL() {
         let label = ActiveLabel()
         label.markdownText = "Visit [Apple](https://apple.com) and #tag"
@@ -277,6 +288,58 @@ final class MarkdownSupportTests: XCTestCase {
         )
         try assertFontIsBold(in: label, at: 1, true)
         try assertFontIsBold(in: label, at: 3, false)
+    }
+
+    @MainActor
+    func testMarkdownSelectionRemovesSelectedOnlyConfigureAttributesOnDeselect() async throws {
+        let label = ActiveLabel()
+        label.configureLinkAttribute = { _, attributes, isSelected in
+            var attributes = attributes
+            if isSelected {
+                attributes[.backgroundColor] = UIColor.yellow
+            }
+            return attributes
+        }
+        label.markdownText = "**#ta**g"
+
+        let exp = XCTestExpectation(description: "deselect fires")
+        label.onDeselectForTest = { exp.fulfill() }
+        label.simulateTapEnded(onElementAt: 0)
+
+        assertBackgroundColor(in: label, at: 1, equals: .yellow)
+        assertBackgroundColor(in: label, at: 3, equals: .yellow)
+        try assertFontIsBold(in: label, at: 1, true)
+        try assertFontIsBold(in: label, at: 3, false)
+
+        await fulfillment(of: [exp], timeout: 1.0)
+
+        assertBackgroundColor(in: label, at: 1, equals: nil)
+        assertBackgroundColor(in: label, at: 3, equals: nil)
+        try assertFontIsBold(in: label, at: 1, true)
+        try assertFontIsBold(in: label, at: 3, false)
+    }
+
+    @MainActor
+    func testPlainSelectionRemovesSelectedOnlyConfigureAttributesOnDeselect() async {
+        let label = ActiveLabel()
+        label.configureLinkAttribute = { _, attributes, isSelected in
+            var attributes = attributes
+            if isSelected {
+                attributes[.backgroundColor] = UIColor.yellow
+            }
+            return attributes
+        }
+        label.text = "#tag"
+
+        let exp = XCTestExpectation(description: "deselect fires")
+        label.onDeselectForTest = { exp.fulfill() }
+        label.simulateTapEnded(onElementAt: 0)
+
+        assertBackgroundColor(in: label, at: 1, equals: .yellow)
+
+        await fulfillment(of: [exp], timeout: 1.0)
+
+        assertBackgroundColor(in: label, at: 1, equals: nil)
     }
 
     func testMarkdownTextClearsWhenPlainTextIsAssignedInsideCustomize() {

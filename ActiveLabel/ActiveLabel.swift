@@ -309,6 +309,7 @@ open class ActiveLabel: UILabel {
     private var hashtagFilterPredicate: ((String) -> Bool)?
 
     private var selectedElement: ElementTuple?
+    private var selectedElementOriginalAttributes: [(NSRange, [NSAttributedString.Key: Any])] = []
     private var heightCorrection: CGFloat = 0
     internal lazy var textStorage = NSTextStorage()
     private lazy var layoutManager = NSLayoutManager()
@@ -402,6 +403,7 @@ open class ActiveLabel: UILabel {
     
     private func clearActiveElements() {
         selectedElement = nil
+        selectedElementOriginalAttributes.removeAll()
         for (type, _) in activeElements {
             activeElements[type]?.removeAll()
         }
@@ -609,8 +611,19 @@ open class ActiveLabel: UILabel {
         let type = selectedElement.type
         var pendingAttributes: [(NSRange, [NSAttributedString.Key: Any])] = []
 
-        textStorage.enumerateAttributes(in: selectedElement.range, options: []) { attributes, range, _ in
-            pendingAttributes.append((range, activeAttributes(for: type, baseAttributes: attributes, isSelected: isSelected)))
+        if isSelected {
+            selectedElementOriginalAttributes.removeAll()
+            textStorage.enumerateAttributes(in: selectedElement.range, options: []) { attributes, range, _ in
+                selectedElementOriginalAttributes.append((range, attributes))
+                pendingAttributes.append((range, activeAttributes(for: type, baseAttributes: attributes, isSelected: true)))
+            }
+        } else if !selectedElementOriginalAttributes.isEmpty {
+            pendingAttributes = selectedElementOriginalAttributes
+            selectedElementOriginalAttributes.removeAll()
+        } else {
+            textStorage.enumerateAttributes(in: selectedElement.range, options: []) { attributes, range, _ in
+                pendingAttributes.append((range, activeAttributes(for: type, baseAttributes: attributes, isSelected: false)))
+            }
         }
 
         for (range, attributes) in pendingAttributes {
