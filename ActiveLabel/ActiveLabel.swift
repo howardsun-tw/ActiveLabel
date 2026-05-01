@@ -285,6 +285,7 @@ open class ActiveLabel: UILabel {
     private var _customizing: Bool = false
     private var storedMarkdownText: String?
     private var applyingMarkdownText: Bool = false
+    private var syncingTextStorageText: Bool = false
     private var markdownLinkElements: [ElementTuple] = []
     private var defaultCustomColor: UIColor = .black
     
@@ -333,7 +334,7 @@ open class ActiveLabel: UILabel {
     }
 
     private func clearMarkdownStateForNonMarkdownAssignment() {
-        guard !applyingMarkdownText, !_customizing else { return }
+        guard !applyingMarkdownText, !syncingTextStorageText else { return }
         storedMarkdownText = nil
         markdownLinkElements.removeAll()
     }
@@ -368,7 +369,9 @@ open class ActiveLabel: UILabel {
         addLinkAttribute(mutAttrString)
         textStorage.setAttributedString(mutAttrString)
         _customizing = true
+        syncingTextStorageText = true
         text = mutAttrString.string
+        syncingTextStorageText = false
         _customizing = false
         setNeedsDisplay()
     }
@@ -395,30 +398,7 @@ open class ActiveLabel: UILabel {
         for (type, elements) in activeElements {
             for element in elements where isValidRange(element.range, in: mutAttrString) {
                 mutAttrString.enumerateAttributes(in: element.range, options: []) { attributes, range, _ in
-                    var linkAttributes = attributes
-
-                    switch type {
-                    case .mention:
-                        linkAttributes[.foregroundColor] = mentionColor
-                    case .hashtag:
-                        linkAttributes[.foregroundColor] = hashtagColor
-                    case .url:
-                        linkAttributes[.foregroundColor] = URLColor
-                    case .custom:
-                        linkAttributes[.foregroundColor] = customColor[type] ?? defaultCustomColor
-                    case .email:
-                        linkAttributes[.foregroundColor] = URLColor
-                    }
-
-                    if let highlightFont = hightlightFont {
-                        linkAttributes[.font] = highlightFont
-                    }
-
-                    if let configureLinkAttribute = configureLinkAttribute {
-                        linkAttributes = configureLinkAttribute(type, linkAttributes, false)
-                    }
-
-                    pendingAttributes.append((range, linkAttributes))
+                    pendingAttributes.append((range, activeAttributes(for: type, baseAttributes: attributes, isSelected: false)))
                 }
             }
         }
@@ -426,6 +406,53 @@ open class ActiveLabel: UILabel {
         for (range, attributes) in pendingAttributes {
             mutAttrString.setAttributes(attributes, range: range)
         }
+    }
+
+    private func activeAttributes(
+        for type: ActiveType,
+        baseAttributes: [NSAttributedString.Key: Any],
+        isSelected: Bool
+    ) -> [NSAttributedString.Key: Any] {
+        var attributes = baseAttributes
+
+        if isSelected {
+            switch type {
+            case .mention:
+                attributes[.foregroundColor] = mentionSelectedColor ?? mentionColor
+            case .hashtag:
+                attributes[.foregroundColor] = hashtagSelectedColor ?? hashtagColor
+            case .url:
+                attributes[.foregroundColor] = URLSelectedColor ?? URLColor
+            case .custom:
+                let possibleSelectedColor = customSelectedColor[type] ?? customColor[type]
+                attributes[.foregroundColor] = possibleSelectedColor ?? defaultCustomColor
+            case .email:
+                attributes[.foregroundColor] = URLSelectedColor ?? URLColor
+            }
+        } else {
+            switch type {
+            case .mention:
+                attributes[.foregroundColor] = mentionColor
+            case .hashtag:
+                attributes[.foregroundColor] = hashtagColor
+            case .url:
+                attributes[.foregroundColor] = URLColor
+            case .custom:
+                attributes[.foregroundColor] = customColor[type] ?? defaultCustomColor
+            case .email:
+                attributes[.foregroundColor] = URLColor
+            }
+        }
+
+        if let highlightFont = hightlightFont {
+            attributes[.font] = highlightFont
+        }
+
+        if let configureLinkAttribute = configureLinkAttribute {
+            attributes = configureLinkAttribute(type, attributes, isSelected)
+        }
+
+        return attributes
     }
 
     private func applyBaseAttributes(to mutAttrString: NSMutableAttributedString) {
@@ -455,12 +482,10 @@ open class ActiveLabel: UILabel {
         var textString = attrString.string
         var textLength = textString.utf16.count
         var textRange = NSRange(location: 0, length: textLength)
-        var protectedRanges: [NSRange] = []
+        let markdownURLs = markdownLinkElements.filter { isValidRange($0.range, in: attrString) }
+        var protectedRanges = markdownURLs.map { $0.range }
 
         if enabledTypes.contains(.url) {
-            let markdownURLs = markdownLinkElements.filter { isValidRange($0.range, in: attrString) }
-            protectedRanges = markdownURLs.map { $0.range }
-
             let result = ActiveBuilder.createURLElements(
                 from: textString,
                 range: textRange,
@@ -548,43 +573,21 @@ open class ActiveLabel: UILabel {
         guard let selectedElement = selectedElement else {
             return
         }
-        
-        var attributes = textStorage.attributes(at: 0, effectiveRange: nil)
+
+        guard isValidRange(selectedElement.range, in: textStorage) else {
+            return
+        }
+
         let type = selectedElement.type
-        
-        if isSelected {
-            let selectedColor: UIColor
-            switch type {
-            case .mention: selectedColor = mentionSelectedColor ?? mentionColor
-            case .hashtag: selectedColor = hashtagSelectedColor ?? hashtagColor
-            case .url: selectedColor = URLSelectedColor ?? URLColor
-            case .custom:
-                let possibleSelectedColor = customSelectedColor[selectedElement.type] ?? customColor[selectedElement.type]
-                selectedColor = possibleSelectedColor ?? defaultCustomColor
-            case .email: selectedColor = URLSelectedColor ?? URLColor
-            }
-            attributes[NSAttributedString.Key.foregroundColor] = selectedColor
-        } else {
-            let unselectedColor: UIColor
-            switch type {
-            case .mention: unselectedColor = mentionColor
-            case .hashtag: unselectedColor = hashtagColor
-            case .url: unselectedColor = URLColor
-            case .custom: unselectedColor = customColor[selectedElement.type] ?? defaultCustomColor
-            case .email: unselectedColor = URLColor
-            }
-            attributes[NSAttributedString.Key.foregroundColor] = unselectedColor
+        var pendingAttributes: [(NSRange, [NSAttributedString.Key: Any])] = []
+
+        textStorage.enumerateAttributes(in: selectedElement.range, options: []) { attributes, range, _ in
+            pendingAttributes.append((range, activeAttributes(for: type, baseAttributes: attributes, isSelected: isSelected)))
         }
-        
-        if let highlightFont = hightlightFont {
-            attributes[NSAttributedString.Key.font] = highlightFont
+
+        for (range, attributes) in pendingAttributes {
+            textStorage.setAttributes(attributes, range: range)
         }
-        
-        if let configureLinkAttribute = configureLinkAttribute {
-            attributes = configureLinkAttribute(type, attributes, isSelected)
-        }
-        
-        textStorage.addAttributes(attributes, range: selectedElement.range)
         
         setNeedsDisplay()
     }

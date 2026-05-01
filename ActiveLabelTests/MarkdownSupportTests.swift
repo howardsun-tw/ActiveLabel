@@ -185,6 +185,17 @@ final class MarkdownSupportTests: XCTestCase {
         XCTAssertFalse(plainFont.fontDescriptor.symbolicTraits.contains(.traitBold))
     }
 
+    func testMarkdownTextClearsWhenPlainTextIsAssignedInsideCustomize() {
+        let label = ActiveLabel()
+        label.markdownText = "[ab](https://example.com)"
+        label.customize { $0.text = "#tag" }
+
+        XCTAssertNil(label.markdownText)
+        XCTAssertEqual(label.text, "#tag")
+        XCTAssertEqual(label.activeElements[.url]?.count ?? 0, 0)
+        XCTAssertEqual(label.activeElements[.hashtag]?.map { $0.element }, [.hashtag("tag")])
+    }
+
     func testMarkdownTextClearsWhenPlainTextIsAssigned() {
         let label = ActiveLabel()
         label.markdownText = "[Apple](https://apple.com)"
@@ -193,5 +204,48 @@ final class MarkdownSupportTests: XCTestCase {
         XCTAssertNil(label.markdownText)
         XCTAssertEqual(label.activeElements[.url]?.count ?? 0, 0)
         XCTAssertEqual(label.activeElements[.hashtag]?.count, 1)
+    }
+
+    func testMarkdownTextClearsWhenAttributedTextIsAssigned() {
+        let label = ActiveLabel()
+        label.markdownText = "[ab](https://example.com)"
+        label.attributedText = NSAttributedString(string: "#tag")
+
+        XCTAssertNil(label.markdownText)
+        XCTAssertEqual(label.text, "#tag")
+        XCTAssertEqual(label.activeElements[.url]?.count ?? 0, 0)
+        XCTAssertEqual(label.activeElements[.hashtag]?.map { $0.element }, [.hashtag("tag")])
+    }
+
+    func testMarkdownLinksProtectNestedElementsWhenURLTypeDisabled() {
+        let label = ActiveLabel()
+        label.enabledTypes = [.mention, .hashtag]
+        label.markdownText = "[#tag @user](https://example.com) #outside @outside"
+
+        XCTAssertEqual(label.text, "#tag @user #outside @outside")
+        XCTAssertEqual(label.activeElements[.url]?.count ?? 0, 0)
+        XCTAssertEqual(label.activeElements[.hashtag]?.map { $0.element }, [.hashtag("outside")])
+        XCTAssertEqual(label.activeElements[.mention]?.map { $0.element }, [.mention("outside")])
+    }
+
+    @MainActor
+    func testSelectionPreservesMixedMarkdownRunAttributes() async throws {
+        let label = ActiveLabel()
+        label.markdownText = "**#ta**g"
+
+        let exp = XCTestExpectation(description: "deselect fires")
+        label.onDeselectForTest = { exp.fulfill() }
+        label.simulateTapEnded(onElementAt: 0)
+        var boldFont = try XCTUnwrap(label.textStorage.attribute(.font, at: 1, effectiveRange: nil) as? UIFont)
+        var plainFont = try XCTUnwrap(label.textStorage.attribute(.font, at: 3, effectiveRange: nil) as? UIFont)
+        XCTAssertTrue(boldFont.fontDescriptor.symbolicTraits.contains(.traitBold))
+        XCTAssertFalse(plainFont.fontDescriptor.symbolicTraits.contains(.traitBold))
+
+        await fulfillment(of: [exp], timeout: 0.4)
+
+        boldFont = try XCTUnwrap(label.textStorage.attribute(.font, at: 1, effectiveRange: nil) as? UIFont)
+        plainFont = try XCTUnwrap(label.textStorage.attribute(.font, at: 3, effectiveRange: nil) as? UIFont)
+        XCTAssertTrue(boldFont.fontDescriptor.symbolicTraits.contains(.traitBold))
+        XCTAssertFalse(plainFont.fontDescriptor.symbolicTraits.contains(.traitBold))
     }
 }
