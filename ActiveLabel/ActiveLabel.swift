@@ -390,34 +390,41 @@ open class ActiveLabel: UILabel {
     /// add link attribute
     private func addLinkAttribute(_ mutAttrString: NSMutableAttributedString) {
         applyBaseAttributes(to: mutAttrString)
+        var pendingAttributes: [(NSRange, [NSAttributedString.Key: Any])] = []
 
         for (type, elements) in activeElements {
             for element in elements where isValidRange(element.range, in: mutAttrString) {
-                var attributes = mutAttrString.attributes(at: element.range.location, effectiveRange: nil)
+                mutAttrString.enumerateAttributes(in: element.range, options: []) { attributes, range, _ in
+                    var linkAttributes = attributes
 
-                switch type {
-                case .mention:
-                    attributes[.foregroundColor] = mentionColor
-                case .hashtag:
-                    attributes[.foregroundColor] = hashtagColor
-                case .url:
-                    attributes[.foregroundColor] = URLColor
-                case .custom:
-                    attributes[.foregroundColor] = customColor[type] ?? defaultCustomColor
-                case .email:
-                    attributes[.foregroundColor] = URLColor
+                    switch type {
+                    case .mention:
+                        linkAttributes[.foregroundColor] = mentionColor
+                    case .hashtag:
+                        linkAttributes[.foregroundColor] = hashtagColor
+                    case .url:
+                        linkAttributes[.foregroundColor] = URLColor
+                    case .custom:
+                        linkAttributes[.foregroundColor] = customColor[type] ?? defaultCustomColor
+                    case .email:
+                        linkAttributes[.foregroundColor] = URLColor
+                    }
+
+                    if let highlightFont = hightlightFont {
+                        linkAttributes[.font] = highlightFont
+                    }
+
+                    if let configureLinkAttribute = configureLinkAttribute {
+                        linkAttributes = configureLinkAttribute(type, linkAttributes, false)
+                    }
+
+                    pendingAttributes.append((range, linkAttributes))
                 }
-
-                if let highlightFont = hightlightFont {
-                    attributes[.font] = highlightFont
-                }
-
-                if let configureLinkAttribute = configureLinkAttribute {
-                    attributes = configureLinkAttribute(type, attributes, false)
-                }
-
-                mutAttrString.setAttributes(attributes, range: element.range)
             }
+        }
+
+        for (range, attributes) in pendingAttributes {
+            mutAttrString.setAttributes(attributes, range: range)
         }
     }
 

@@ -171,6 +171,20 @@ final class MarkdownSupportTests: XCTestCase {
         XCTAssertEqual(urlOriginals(in: label), ["https://apple.com", "https://example.com"])
     }
 
+    func testActiveElementSpanningMixedMarkdownRunsPreservesRunAttributes() throws {
+        let label = ActiveLabel()
+        label.markdownText = "**#ta**g"
+
+        XCTAssertEqual(label.text, "#tag")
+        XCTAssertEqual(label.activeElements[.hashtag]?.map { $0.element }, [.hashtag("tag")])
+
+        let boldFont = try XCTUnwrap(label.textStorage.attribute(.font, at: 1, effectiveRange: nil) as? UIFont)
+        let plainFont = try XCTUnwrap(label.textStorage.attribute(.font, at: 3, effectiveRange: nil) as? UIFont)
+
+        XCTAssertTrue(boldFont.fontDescriptor.symbolicTraits.contains(.traitBold))
+        XCTAssertFalse(plainFont.fontDescriptor.symbolicTraits.contains(.traitBold))
+    }
+
     func testMarkdownTextClearsWhenPlainTextIsAssigned() {
         let label = ActiveLabel()
         label.markdownText = "[Apple](https://apple.com)"
