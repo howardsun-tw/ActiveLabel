@@ -132,4 +132,52 @@ final class MarkdownSupportTests: XCTestCase {
             NSUnderlineStyle.single.rawValue
         )
     }
+
+    private func urlOriginals(in label: ActiveLabel) -> [String] {
+        return (label.activeElements[.url] ?? []).compactMap { tuple in
+            if case .url(let original, _) = tuple.element {
+                return original
+            }
+            return nil
+        }
+    }
+
+    func testMarkdownTextDisplaysLinkTextAndStoresDestinationURL() {
+        let label = ActiveLabel()
+        label.markdownText = "Visit [Apple](https://apple.com) and #tag"
+
+        XCTAssertEqual(label.markdownText, "Visit [Apple](https://apple.com) and #tag")
+        XCTAssertEqual(label.text, "Visit Apple and #tag")
+        XCTAssertEqual(urlOriginals(in: label), ["https://apple.com"])
+        XCTAssertEqual(label.activeElements[.url]?.first?.range, (label.text! as NSString).range(of: "Apple"))
+        XCTAssertEqual(label.activeElements[.hashtag]?.count, 1)
+    }
+
+    func testMarkdownLinkWinsOverNestedMentionAndHashtag() {
+        let label = ActiveLabel()
+        label.markdownText = "[#tag @user](https://example.com) #outside @outside"
+
+        XCTAssertEqual(label.text, "#tag @user #outside @outside")
+        XCTAssertEqual(urlOriginals(in: label), ["https://example.com"])
+        XCTAssertEqual(label.activeElements[.hashtag]?.map { $0.element }, [.hashtag("outside")])
+        XCTAssertEqual(label.activeElements[.mention]?.map { $0.element }, [.mention("outside")])
+    }
+
+    func testMarkdownLinkAndBareURLBothCreateURLElements() {
+        let label = ActiveLabel()
+        label.markdownText = "[Apple](https://apple.com) https://example.com"
+
+        XCTAssertEqual(label.text, "Apple https://example.com")
+        XCTAssertEqual(urlOriginals(in: label), ["https://apple.com", "https://example.com"])
+    }
+
+    func testMarkdownTextClearsWhenPlainTextIsAssigned() {
+        let label = ActiveLabel()
+        label.markdownText = "[Apple](https://apple.com)"
+        label.text = "#tag"
+
+        XCTAssertNil(label.markdownText)
+        XCTAssertEqual(label.activeElements[.url]?.count ?? 0, 0)
+        XCTAssertEqual(label.activeElements[.hashtag]?.count, 1)
+    }
 }

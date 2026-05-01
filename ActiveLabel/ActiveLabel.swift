@@ -22,6 +22,11 @@ open class ActiveLabel: UILabel {
     open weak var delegate: ActiveLabelDelegate?
     
     open var enabledTypes: [ActiveType] = [.mention, .hashtag, .url, .email]
+
+    open var markdownText: String? {
+        get { storedMarkdownText }
+        set { applyMarkdownText(newValue) }
+    }
     
     open var urlMaximumLength: Int?
     
@@ -119,6 +124,7 @@ open class ActiveLabel: UILabel {
     // MARK: - override UILabel properties
     override open var text: String? {
         didSet {
+            clearMarkdownStateForNonMarkdownAssignment()
             pendingDeselectTask?.cancel()
             pendingDeselectTask = nil
             updateTextStorage()
@@ -127,6 +133,7 @@ open class ActiveLabel: UILabel {
 
     override open var attributedText: NSAttributedString? {
         didSet {
+            clearMarkdownStateForNonMarkdownAssignment()
             pendingDeselectTask?.cancel()
             pendingDeselectTask = nil
             updateTextStorage()
@@ -276,6 +283,9 @@ open class ActiveLabel: UILabel {
     
     // MARK: - private properties
     private var _customizing: Bool = false
+    private var storedMarkdownText: String?
+    private var applyingMarkdownText: Bool = false
+    private var markdownLinkElements: [ElementTuple] = []
     private var defaultCustomColor: UIColor = .black
     
     internal var mentionTapHandler: ((String) -> ())?
@@ -299,6 +309,34 @@ open class ActiveLabel: UILabel {
     lazy var activeElements = [ActiveType: [ElementTuple]]()
     
     // MARK: - helper functions
+
+    private func applyMarkdownText(_ markdown: String?) {
+        storedMarkdownText = markdown
+        markdownLinkElements.removeAll()
+        pendingDeselectTask?.cancel()
+        pendingDeselectTask = nil
+
+        applyingMarkdownText = true
+        defer { applyingMarkdownText = false }
+
+        guard let markdown else {
+            attributedText = nil
+            return
+        }
+
+        let result = MarkdownParser.parse(markdown, baseFont: font)
+        markdownLinkElements = result.links.map { link in
+            let visibleText = result.attributedString.attributedSubstring(from: link.range).string
+            return (link.range, ActiveElement.url(original: link.url.absoluteString, trimmed: visibleText), .url)
+        }
+        attributedText = result.attributedString
+    }
+
+    private func clearMarkdownStateForNonMarkdownAssignment() {
+        guard !applyingMarkdownText, !_customizing else { return }
+        storedMarkdownText = nil
+        markdownLinkElements.removeAll()
+    }
     
     private func setupLabel() {
         textStorage.addLayoutManager(layoutManager)
@@ -324,8 +362,7 @@ open class ActiveLabel: UILabel {
         
         if parseText {
             clearActiveElements()
-            let newString = parseTextAndExtractActiveElements(mutAttrString)
-            mutAttrString.mutableString.setString(newString)
+            parseTextAndExtractActiveElements(mutAttrString)
         }
         
         addLinkAttribute(mutAttrString)
@@ -352,55 +389,88 @@ open class ActiveLabel: UILabel {
     
     /// add link attribute
     private func addLinkAttribute(_ mutAttrString: NSMutableAttributedString) {
-        var range = NSRange(location: 0, length: 0)
-        var attributes = mutAttrString.attributes(at: 0, effectiveRange: &range)
-        
-        attributes[NSAttributedString.Key.font] = font!
-        attributes[NSAttributedString.Key.foregroundColor] = textColor
-        mutAttrString.addAttributes(attributes, range: range)
-        
-        attributes[NSAttributedString.Key.foregroundColor] = mentionColor
-        
+        applyBaseAttributes(to: mutAttrString)
+
         for (type, elements) in activeElements {
-            
-            switch type {
-            case .mention: attributes[NSAttributedString.Key.foregroundColor] = mentionColor
-            case .hashtag: attributes[NSAttributedString.Key.foregroundColor] = hashtagColor
-            case .url: attributes[NSAttributedString.Key.foregroundColor] = URLColor
-            case .custom: attributes[NSAttributedString.Key.foregroundColor] = customColor[type] ?? defaultCustomColor
-            case .email: attributes[NSAttributedString.Key.foregroundColor] = URLColor
-            }
-            
-            if let highlightFont = hightlightFont {
-                attributes[NSAttributedString.Key.font] = highlightFont
-            }
-            
-            if let configureLinkAttribute = configureLinkAttribute {
-                attributes = configureLinkAttribute(type, attributes, false)
-            }
-            
-            for element in elements {
+            for element in elements where isValidRange(element.range, in: mutAttrString) {
+                var attributes = mutAttrString.attributes(at: element.range.location, effectiveRange: nil)
+
+                switch type {
+                case .mention:
+                    attributes[.foregroundColor] = mentionColor
+                case .hashtag:
+                    attributes[.foregroundColor] = hashtagColor
+                case .url:
+                    attributes[.foregroundColor] = URLColor
+                case .custom:
+                    attributes[.foregroundColor] = customColor[type] ?? defaultCustomColor
+                case .email:
+                    attributes[.foregroundColor] = URLColor
+                }
+
+                if let highlightFont = hightlightFont {
+                    attributes[.font] = highlightFont
+                }
+
+                if let configureLinkAttribute = configureLinkAttribute {
+                    attributes = configureLinkAttribute(type, attributes, false)
+                }
+
                 mutAttrString.setAttributes(attributes, range: element.range)
             }
         }
     }
-    
+
+    private func applyBaseAttributes(to mutAttrString: NSMutableAttributedString) {
+        let fullRange = NSRange(location: 0, length: mutAttrString.length)
+        var pendingAttributes: [(NSRange, [NSAttributedString.Key: Any])] = []
+
+        mutAttrString.enumerateAttributes(in: fullRange, options: []) { attributes, range, _ in
+            var additions: [NSAttributedString.Key: Any] = [:]
+            if attributes[.font] == nil {
+                additions[.font] = font!
+            }
+            if attributes[.foregroundColor] == nil {
+                additions[.foregroundColor] = textColor
+            }
+            if !additions.isEmpty {
+                pendingAttributes.append((range, additions))
+            }
+        }
+
+        for (range, attributes) in pendingAttributes {
+            mutAttrString.addAttributes(attributes, range: range)
+        }
+    }
+
     /// use regex check all link ranges
-    private func parseTextAndExtractActiveElements(_ attrString: NSAttributedString) -> String {
+    private func parseTextAndExtractActiveElements(_ attrString: NSMutableAttributedString) {
         var textString = attrString.string
         var textLength = textString.utf16.count
         var textRange = NSRange(location: 0, length: textLength)
-        
+        var protectedRanges: [NSRange] = []
+
         if enabledTypes.contains(.url) {
-            let tuple = ActiveBuilder.createURLElements(from: textString, range: textRange, maximumLength: urlMaximumLength)
-            let urlElements = tuple.0
-            let finalText = tuple.1
-            textString = finalText
+            let markdownURLs = markdownLinkElements.filter { isValidRange($0.range, in: attrString) }
+            protectedRanges = markdownURLs.map { $0.range }
+
+            let result = ActiveBuilder.createURLElements(
+                from: textString,
+                range: textRange,
+                maximumLength: urlMaximumLength,
+                excluding: protectedRanges
+            )
+            apply(result.replacements, to: attrString)
+
+            let adjustedMarkdownURLs = adjust(markdownURLs, for: result.replacements)
+            activeElements[.url] = adjustedMarkdownURLs + result.elements
+            protectedRanges = adjustedMarkdownURLs.map { $0.range }
+
+            textString = attrString.string
             textLength = textString.utf16.count
             textRange = NSRange(location: 0, length: textLength)
-            activeElements[.url] = urlElements
         }
-        
+
         for type in enabledTypes where type != .url {
             var filter: ((String) -> Bool)? = nil
             if type == .mention {
@@ -408,13 +478,46 @@ open class ActiveLabel: UILabel {
             } else if type == .hashtag {
                 filter = hashtagFilterPredicate
             }
-            let hashtagElements = ActiveBuilder.createElements(type: type, from: textString, range: textRange, filterPredicate: filter)
-            activeElements[type] = hashtagElements
+
+            let elements = ActiveBuilder.createElements(
+                type: type,
+                from: textString,
+                range: textRange,
+                filterPredicate: filter
+            ).filter { element in
+                !protectedRanges.contains { ActiveBuilder.rangesOverlap($0, element.range) }
+            }
+            activeElements[type] = elements
         }
-        
-        return textString
     }
-    
+
+    private func apply(_ replacements: [TextReplacement], to attrString: NSMutableAttributedString) {
+        for replacement in replacements.reversed() {
+            attrString.replaceCharacters(in: replacement.range, with: replacement.replacement)
+        }
+    }
+
+    private func adjust(_ elements: [ElementTuple], for replacements: [TextReplacement]) -> [ElementTuple] {
+        return elements.compactMap { element in
+            var adjustedRange = element.range
+
+            for replacement in replacements {
+                if ActiveBuilder.rangesOverlap(element.range, replacement.range) {
+                    return nil
+                }
+
+                if replacement.range.location < element.range.location {
+                    adjustedRange.location += replacement.delta
+                }
+            }
+
+            return (adjustedRange, element.element, element.type)
+        }
+    }
+
+    private func isValidRange(_ range: NSRange, in attrString: NSAttributedString) -> Bool {
+        return range.location >= 0 && range.length >= 0 && range.location + range.length <= attrString.length
+    }
     
     /// add line break mode
     private func addLineBreak(_ attrString: NSAttributedString) -> NSMutableAttributedString {
