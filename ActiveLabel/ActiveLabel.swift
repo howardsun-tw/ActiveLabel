@@ -141,7 +141,12 @@ open class ActiveLabel: UILabel {
     }
     
     override open var font: UIFont! {
-        didSet { updateTextStorage(parseText: false) }
+        didSet {
+            if storedMarkdownText != nil, !applyingMarkdownText, !syncingTextStorageText {
+                markdownBaseFont = font
+            }
+            updateTextStorage(parseText: false)
+        }
     }
     
     override open var textColor: UIColor! {
@@ -286,6 +291,7 @@ open class ActiveLabel: UILabel {
     private var storedMarkdownText: String?
     private var applyingMarkdownText: Bool = false
     private var syncingTextStorageText: Bool = false
+    private var markdownBaseFont: UIFont?
     private var markdownLinkElements: [ElementTuple] = []
     private var defaultCustomColor: UIColor = .black
     
@@ -313,6 +319,7 @@ open class ActiveLabel: UILabel {
 
     private func applyMarkdownText(_ markdown: String?) {
         storedMarkdownText = markdown
+        markdownBaseFont = markdown == nil ? nil : font
         markdownLinkElements.removeAll()
         pendingDeselectTask?.cancel()
         pendingDeselectTask = nil
@@ -325,17 +332,22 @@ open class ActiveLabel: UILabel {
             return
         }
 
-        let result = MarkdownParser.parse(markdown, baseFont: font)
+        attributedText = markdownAttributedString(from: markdown)
+    }
+
+    private func markdownAttributedString(from markdown: String) -> NSAttributedString {
+        let result = MarkdownParser.parse(markdown, baseFont: markdownBaseFont ?? font)
         markdownLinkElements = result.links.map { link in
             let visibleText = result.attributedString.attributedSubstring(from: link.range).string
             return (link.range, ActiveElement.url(original: link.url.absoluteString, trimmed: visibleText), .url)
         }
-        attributedText = result.attributedString
+        return result.attributedString
     }
 
     private func clearMarkdownStateForNonMarkdownAssignment() {
         guard !applyingMarkdownText, !syncingTextStorageText else { return }
         storedMarkdownText = nil
+        markdownBaseFont = nil
         markdownLinkElements.removeAll()
     }
     
@@ -351,17 +363,29 @@ open class ActiveLabel: UILabel {
     private func updateTextStorage(parseText: Bool = true) {
         updateTextStorageCallCount += 1
         if _customizing { return }
+
+        let sourceAttributedText: NSAttributedString?
+        let shouldParseText: Bool
+        if let markdown = storedMarkdownText {
+            markdownLinkElements.removeAll()
+            sourceAttributedText = markdownAttributedString(from: markdown)
+            shouldParseText = true
+        } else {
+            sourceAttributedText = attributedText
+            shouldParseText = parseText
+        }
+
         // clean up previous active elements
-        guard let attributedText = attributedText, attributedText.length > 0 else {
+        guard let sourceAttributedText = sourceAttributedText, sourceAttributedText.length > 0 else {
             clearActiveElements()
             textStorage.setAttributedString(NSAttributedString())
             setNeedsDisplay()
             return
         }
         
-        let mutAttrString = addLineBreak(attributedText)
+        let mutAttrString = addLineBreak(sourceAttributedText)
         
-        if parseText {
+        if shouldParseText {
             clearActiveElements()
             parseTextAndExtractActiveElements(mutAttrString)
         }
@@ -554,17 +578,21 @@ open class ActiveLabel: UILabel {
     /// add line break mode
     private func addLineBreak(_ attrString: NSAttributedString) -> NSMutableAttributedString {
         let mutAttrString = NSMutableAttributedString(attributedString: attrString)
-        
-        var range = NSRange(location: 0, length: 0)
-        var attributes = mutAttrString.attributes(at: 0, effectiveRange: &range)
-        
-        let paragraphStyle = attributes[NSAttributedString.Key.paragraphStyle] as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
-        paragraphStyle.lineBreakMode = NSLineBreakMode.byWordWrapping
-        paragraphStyle.alignment = textAlignment
-        paragraphStyle.lineSpacing = lineSpacing
-        paragraphStyle.minimumLineHeight = minimumLineHeight > 0 ? minimumLineHeight: self.font.pointSize * 1.14
-        attributes[NSAttributedString.Key.paragraphStyle] = paragraphStyle
-        mutAttrString.setAttributes(attributes, range: range)
+        let fullRange = NSRange(location: 0, length: mutAttrString.length)
+        var pendingParagraphStyles: [(NSRange, NSMutableParagraphStyle)] = []
+
+        mutAttrString.enumerateAttribute(.paragraphStyle, in: fullRange, options: []) { value, range, _ in
+            let paragraphStyle = (value as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
+            paragraphStyle.lineBreakMode = NSLineBreakMode.byWordWrapping
+            paragraphStyle.alignment = textAlignment
+            paragraphStyle.lineSpacing = lineSpacing
+            paragraphStyle.minimumLineHeight = minimumLineHeight > 0 ? minimumLineHeight: self.font.pointSize * 1.14
+            pendingParagraphStyles.append((range, paragraphStyle))
+        }
+
+        for (range, paragraphStyle) in pendingParagraphStyles {
+            mutAttrString.addAttribute(.paragraphStyle, value: paragraphStyle, range: range)
+        }
         
         return mutAttrString
     }

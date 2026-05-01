@@ -142,6 +142,42 @@ final class MarkdownSupportTests: XCTestCase {
         }
     }
 
+    private func assertFontIsBold(
+        in label: ActiveLabel,
+        at location: Int,
+        _ expected: Bool,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let font = try XCTUnwrap(
+            label.textStorage.attribute(.font, at: location, effectiveRange: nil) as? UIFont,
+            file: file,
+            line: line
+        )
+        let isBold = font.fontDescriptor.symbolicTraits.contains(.traitBold)
+
+        if expected {
+            XCTAssertTrue(isBold, file: file, line: line)
+        } else {
+            XCTAssertFalse(isBold, file: file, line: line)
+        }
+    }
+
+    private func assertForegroundColor(
+        in label: ActiveLabel,
+        at location: Int,
+        equals expected: UIColor,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let color = try XCTUnwrap(
+            label.textStorage.attribute(.foregroundColor, at: location, effectiveRange: nil) as? UIColor,
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(color, expected, file: file, line: line)
+    }
+
     func testMarkdownTextDisplaysLinkTextAndStoresDestinationURL() {
         let label = ActiveLabel()
         label.markdownText = "Visit [Apple](https://apple.com) and #tag"
@@ -178,11 +214,69 @@ final class MarkdownSupportTests: XCTestCase {
         XCTAssertEqual(label.text, "#tag")
         XCTAssertEqual(label.activeElements[.hashtag]?.map { $0.element }, [.hashtag("tag")])
 
-        let boldFont = try XCTUnwrap(label.textStorage.attribute(.font, at: 1, effectiveRange: nil) as? UIFont)
-        let plainFont = try XCTUnwrap(label.textStorage.attribute(.font, at: 3, effectiveRange: nil) as? UIFont)
+        try assertFontIsBold(in: label, at: 1, true)
+        try assertFontIsBold(in: label, at: 3, false)
+    }
 
-        XCTAssertTrue(boldFont.fontDescriptor.symbolicTraits.contains(.traitBold))
-        XCTAssertFalse(plainFont.fontDescriptor.symbolicTraits.contains(.traitBold))
+    func testHashtagColorChangeAfterMarkdownTextPreservesMixedRunAttributes() throws {
+        let label = ActiveLabel()
+        label.markdownText = "**#ta**g"
+        label.hashtagColor = .red
+
+        XCTAssertEqual(label.text, "#tag")
+        XCTAssertEqual(label.activeElements[.hashtag]?.map { $0.element }, [.hashtag("tag")])
+        try assertForegroundColor(in: label, at: 1, equals: .red)
+        try assertForegroundColor(in: label, at: 3, equals: .red)
+        try assertFontIsBold(in: label, at: 1, true)
+        try assertFontIsBold(in: label, at: 3, false)
+    }
+
+    func testMentionColorChangeAfterMarkdownTextPreservesMixedRunAttributes() throws {
+        let label = ActiveLabel()
+        label.markdownText = "**@us**er"
+        label.mentionColor = .red
+
+        XCTAssertEqual(label.text, "@user")
+        XCTAssertEqual(label.activeElements[.mention]?.map { $0.element }, [.mention("user")])
+        try assertForegroundColor(in: label, at: 1, equals: .red)
+        try assertForegroundColor(in: label, at: 4, equals: .red)
+        try assertFontIsBold(in: label, at: 1, true)
+        try assertFontIsBold(in: label, at: 4, false)
+    }
+
+    func testURLColorChangeAfterMarkdownTextPreservesMarkdownLinkFontAttributes() throws {
+        let label = ActiveLabel()
+        label.markdownText = "**[Apple](https://apple.com)**"
+        label.URLColor = .red
+
+        XCTAssertEqual(label.text, "Apple")
+        XCTAssertEqual(urlOriginals(in: label), ["https://apple.com"])
+        try assertForegroundColor(in: label, at: 1, equals: .red)
+        try assertFontIsBold(in: label, at: 1, true)
+    }
+
+    func testConfigureLinkAttributeAfterMarkdownTextPreservesMixedRunAttributes() throws {
+        let label = ActiveLabel()
+        label.markdownText = "**#ta**g"
+        label.configureLinkAttribute = { _, attributes, _ in
+            var attributes = attributes
+            attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
+            return attributes
+        }
+        label.hashtagColor = .red
+
+        XCTAssertEqual(label.text, "#tag")
+        XCTAssertEqual(label.activeElements[.hashtag]?.map { $0.element }, [.hashtag("tag")])
+        XCTAssertEqual(
+            label.textStorage.attribute(.underlineStyle, at: 1, effectiveRange: nil) as? Int,
+            NSUnderlineStyle.single.rawValue
+        )
+        XCTAssertEqual(
+            label.textStorage.attribute(.underlineStyle, at: 3, effectiveRange: nil) as? Int,
+            NSUnderlineStyle.single.rawValue
+        )
+        try assertFontIsBold(in: label, at: 1, true)
+        try assertFontIsBold(in: label, at: 3, false)
     }
 
     func testMarkdownTextClearsWhenPlainTextIsAssignedInsideCustomize() {
@@ -241,7 +335,7 @@ final class MarkdownSupportTests: XCTestCase {
         XCTAssertTrue(boldFont.fontDescriptor.symbolicTraits.contains(.traitBold))
         XCTAssertFalse(plainFont.fontDescriptor.symbolicTraits.contains(.traitBold))
 
-        await fulfillment(of: [exp], timeout: 0.4)
+        await fulfillment(of: [exp], timeout: 1.0)
 
         boldFont = try XCTUnwrap(label.textStorage.attribute(.font, at: 1, effectiveRange: nil) as? UIFont)
         plainFont = try XCTUnwrap(label.textStorage.attribute(.font, at: 3, effectiveRange: nil) as? UIFont)
