@@ -195,13 +195,22 @@ open class ActiveLabel: UILabel {
     }
     
     open override func drawText(in rect: CGRect) {
-        let range = NSRange(location: 0, length: textStorage.length)
-        
         textContainer.size = rect.size
         let newOrigin = textOrigin(inRect: rect)
-        
-        layoutManager.drawBackground(forGlyphRange: range, at: newOrigin)
-        layoutManager.drawGlyphs(forGlyphRange: range, at: newOrigin)
+
+        // `drawGlyphs(forGlyphRange:)` takes a GLYPH range, not a
+        // character range. For LTR Latin text the two are 1:1 so
+        // `textStorage.length` happened to work, but Arabic / Hebrew /
+        // any script with shaping inserts extra format glyphs (bidi
+        // controls, mark clusters, ligatures) so glyph count > character
+        // count. Passing the character length under-draws the trailing
+        // glyphs — the visible symptom is Arabic chat messages losing
+        // their last few characters even though `textStorage.string`
+        // contains the full text.
+        let glyphRange = layoutManager.glyphRange(for: textContainer)
+
+        layoutManager.drawBackground(forGlyphRange: glyphRange, at: newOrigin)
+        layoutManager.drawGlyphs(forGlyphRange: glyphRange, at: newOrigin)
     }
     
     
@@ -619,12 +628,22 @@ open class ActiveLabel: UILabel {
     /// add line break mode
     private func addLineBreak(_ attrString: NSAttributedString) -> NSMutableAttributedString {
         let mutAttrString = NSMutableAttributedString(attributedString: attrString)
+        let fullString = mutAttrString.string as NSString
         let fullRange = NSRange(location: 0, length: mutAttrString.length)
         var pendingParagraphStyles: [(NSRange, NSMutableParagraphStyle)] = []
 
         mutAttrString.enumerateAttribute(.paragraphStyle, in: fullRange, options: []) { value, range, _ in
             let paragraphStyle = (value as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
-            paragraphStyle.lineBreakMode = NSLineBreakMode.byWordWrapping
+            // Arabic / Hebrew / Persian / Urdu chat messages frequently consist
+            // of one continuous run with no whitespace. `.byWordWrapping` cannot
+            // break inside such a run, so the line overflows the container and
+            // a clipping superview drops the trailing glyphs (= leading
+            // characters in RTL reading order). `.byCharWrapping` is the only
+            // line-break mode that can wrap inside an unbreakable run.
+            let runText = fullString.substring(with: range)
+            paragraphStyle.lineBreakMode = runText.activeLabel_containsRightToLeftScript
+                ? .byCharWrapping
+                : .byWordWrapping
             paragraphStyle.alignment = textAlignment
             paragraphStyle.lineSpacing = lineSpacing
             paragraphStyle.minimumLineHeight = minimumLineHeight > 0 ? minimumLineHeight: self.font.pointSize * 1.14
@@ -634,7 +653,7 @@ open class ActiveLabel: UILabel {
         for (range, paragraphStyle) in pendingParagraphStyles {
             mutAttrString.addAttribute(.paragraphStyle, value: paragraphStyle, range: range)
         }
-        
+
         return mutAttrString
     }
     
@@ -679,11 +698,18 @@ open class ActiveLabel: UILabel {
         
         var correctLocation = location
         correctLocation.y -= heightCorrection
-        let boundingRect = layoutManager.boundingRect(forGlyphRange: NSRange(location: 0, length: textStorage.length), in: textContainer)
+        // Same trap as `drawText`: `boundingRect(forGlyphRange:)` expects a
+        // GLYPH range, not a character range. For Arabic / Hebrew / any
+        // shaped script glyph count > character count, so passing
+        // `textStorage.length` under-measures the ink rect and taps near
+        // the trailing edge fall outside the gate even though the glyph
+        // they land on is real.
+        let glyphRange = layoutManager.glyphRange(for: textContainer)
+        let boundingRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
         guard boundingRect.contains(correctLocation) else {
             return nil
         }
-        
+
         let index = layoutManager.glyphIndex(for: correctLocation, in: textContainer)
         
         for element in activeElements.map({ $0.1 }).joined() {
@@ -764,6 +790,29 @@ open class ActiveLabel: UILabel {
 
     deinit {
         pendingDeselectTask?.cancel()
+    }
+}
+
+private extension String {
+    /// Unicode-block detector for strong-RTL scripts: Hebrew, Arabic, Syriac,
+    /// NKo, Mandaic, Thaana, Arabic presentation forms A/B, and Arabic
+    /// mathematical alphabetic symbols. Used by `addLineBreak` to switch
+    /// such paragraphs to `.byCharWrapping` so unbreakable RTL runs can
+    /// wrap inside the container instead of overflowing it.
+    var activeLabel_containsRightToLeftScript: Bool {
+        unicodeScalars.contains { scalar in
+            switch scalar.value {
+            case 0x0590...0x05FF,
+                 0x0600...0x06FF,
+                 0x0700...0x08FF,
+                 0xFB1D...0xFDFF,
+                 0xFE70...0xFEFF,
+                 0x1EE00...0x1EEFF:
+                return true
+            default:
+                return false
+            }
+        }
     }
 }
 

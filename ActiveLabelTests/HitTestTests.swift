@@ -134,6 +134,7 @@ final class HitTestTests: XCTestCase {
         _ = label.element(at: interior)
     }
 
+
     /// B2: dealloc cancellation. After the label is released, no late
     /// deselect should fire on a captured weak reference.
     @MainActor
