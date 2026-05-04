@@ -28,6 +28,101 @@ public struct MarkdownLink {
     }
 }
 
+/// Caller-supplied styling for the inline `code` span (single backticks).
+/// Triple-backtick fenced code blocks are unaffected — they always render
+/// with a flat `.backgroundColor` and the body font.
+///
+/// The parser is generic; callers (e.g. IMKit's vue-sdk-flavored chat
+/// bubbles) decide whether inline code should keep the legacy flat
+/// `.backgroundColor` or be tagged with a marker attribute that a custom
+/// `NSLayoutManager` paints as a rounded pill.
+public struct MarkdownInlineCodeStyle: Sendable {
+
+    /// How the parser annotates inline `code` runs for background painting.
+    public enum BackgroundMode: Sendable {
+        /// Legacy: parser writes `.backgroundColor = codeBackgroundColor` on
+        /// the inline run. UILabel paints a flat rect with no corner radius.
+        case stockBackgroundColor
+        /// Parser writes the named attribute key (with `NSNumber(true)`) on
+        /// the inline run instead of `.backgroundColor`. A custom layout
+        /// manager owned by the caller is responsible for the actual paint.
+        case markerAttribute(NSAttributedString.Key)
+    }
+
+    /// Foreground color for inline-code runs. `nil` means "inherit the
+    /// surrounding `textColor`" (legacy behavior).
+    public var foregroundColor: UIColor?
+
+    /// Font size relative to the surrounding body font. `1.0` keeps the
+    /// existing body size; a chat client mirroring vue-sdk would pass `0.85`.
+    public var fontScale: CGFloat
+
+    /// Whether the parser writes `.backgroundColor` directly or tags a
+    /// custom marker attribute for the caller to paint.
+    public var backgroundMode: BackgroundMode
+
+    /// Extra advance (in em of the inline-code run's font) inserted
+    /// immediately before and after each inline `code` run via `.kern`.
+    /// Used by callers whose pill has its own internal padding extending
+    /// past the glyph bounds — without this, the pill bg overlaps the
+    /// adjacent glyph's leading edge or sits flush against it. Default
+    /// `0` (no extra kerning).
+    public var outerKerningEm: CGFloat
+
+    public init(foregroundColor: UIColor? = nil,
+                fontScale: CGFloat = 1.0,
+                backgroundMode: BackgroundMode = .stockBackgroundColor,
+                outerKerningEm: CGFloat = 0) {
+        self.foregroundColor = foregroundColor
+        self.fontScale = fontScale
+        self.backgroundMode = backgroundMode
+        self.outerKerningEm = outerKerningEm
+    }
+
+    /// Default — backwards-compatible flat `.backgroundColor` paint, no
+    /// foreground override, body-size monospaced glyphs.
+    public static let `default` = MarkdownInlineCodeStyle()
+
+    /// Stamps `.kern` around every marker run so the caller's pill paint
+    /// (which extends past the glyph bounds) gets a visible gap from
+    /// adjacent text. No-op when `outerKerningEm == 0` or when the caller
+    /// uses `.stockBackgroundColor` (no marker → nothing to find).
+    /// Exposed so render paths that don't go through `MarkdownParser.parse`
+    /// (e.g. streaming token-by-token assembly) can apply the same post-pass.
+    public func applyOuterKerning(
+        to output: NSMutableAttributedString,
+        baseFont: UIFont
+    ) {
+        guard outerKerningEm > 0,
+              case .markerAttribute(let markerKey) = backgroundMode
+        else { return }
+
+        let kernPoints = baseFont.pointSize * fontScale * outerKerningEm
+        let fullRange = NSRange(location: 0, length: output.length)
+        output.enumerateAttribute(markerKey, in: fullRange, options: []) { value, range, _ in
+            guard let flag = value as? NSNumber, flag.boolValue, range.length > 0 else { return }
+            let last = NSRange(location: range.location + range.length - 1, length: 1)
+            output.addAttribute(.kern, value: NSNumber(value: Double(kernPoints)), range: last)
+            if range.location > 0 {
+                let prev = NSRange(location: range.location - 1, length: 1)
+                output.addAttribute(.kern, value: NSNumber(value: Double(kernPoints)), range: prev)
+            }
+        }
+    }
+
+    /// Stable string used to discriminate cache entries that disagree only
+    /// on inline-code styling (the parser memoizes its output).
+    fileprivate var cacheKey: String {
+        let mode: String
+        switch backgroundMode {
+        case .stockBackgroundColor: mode = "stock"
+        case .markerAttribute(let key): mode = "marker(\(key.rawValue))"
+        }
+        let fg = foregroundColor?.activeLabelMarkdownCacheKey ?? "nil"
+        return "fg=\(fg)|scale=\(fontScale)|mode=\(mode)|kern=\(outerKerningEm)"
+    }
+}
+
 public enum MarkdownParser {
 
     /// Width (in points) used as the head indent for a single blockquote
@@ -63,25 +158,42 @@ public enum MarkdownParser {
         text: String,
         baseFont: UIFont,
         textColor: UIColor,
-        codeBackgroundColor: UIColor
+        codeBackgroundColor: UIColor,
+        inlineCodeStyle: MarkdownInlineCodeStyle
     ) -> NSString {
         let fontKey = "\(baseFont.familyName)|\(baseFont.pointSize)|\(baseFont.fontDescriptor.symbolicTraits.rawValue)"
         let textColorKey = textColor.activeLabelMarkdownCacheKey
         let codeBgKey = codeBackgroundColor.activeLabelMarkdownCacheKey
-        return "\(textColorKey)|\(codeBgKey)|\(fontKey)|\(text)" as NSString
+        return "\(textColorKey)|\(codeBgKey)|\(inlineCodeStyle.cacheKey)|\(fontKey)|\(text)" as NSString
     }
 
+    /// Parse `markdown` into a styled `NSMutableAttributedString`.
+    ///
+    /// - Parameters:
+    ///   - markdown: Source text.
+    ///   - baseFont: Body font; headers / inline traits scale off this.
+    ///   - textColor: Default foreground for runs.
+    ///   - codeBackgroundColor: Background for fenced (triple-backtick)
+    ///     code blocks. Also applied to inline `code` *only* when
+    ///     `inlineCodeStyle.backgroundMode == .stockBackgroundColor`
+    ///     (the default). When the caller picks `.markerAttribute(...)`
+    ///     this color is no longer applied to inline code — the caller's
+    ///     layout manager paints the inline pill instead.
+    ///   - inlineCodeStyle: How inline `code` runs are annotated. See
+    ///     `MarkdownInlineCodeStyle`. Default = legacy flat `.backgroundColor`.
     public static func parse(
         _ markdown: String,
         baseFont: UIFont,
         textColor: UIColor = .label,
-        codeBackgroundColor: UIColor = .systemGray6
+        codeBackgroundColor: UIColor = .systemGray6,
+        inlineCodeStyle: MarkdownInlineCodeStyle = .default
     ) -> MarkdownParseResult {
         let key = cacheKey(
             text: markdown,
             baseFont: baseFont,
             textColor: textColor,
-            codeBackgroundColor: codeBackgroundColor
+            codeBackgroundColor: codeBackgroundColor,
+            inlineCodeStyle: inlineCodeStyle
         )
         if let cached = cache.object(forKey: key) {
             return MarkdownParseResult(
@@ -94,7 +206,8 @@ public enum MarkdownParser {
             markdown,
             baseFont: baseFont,
             textColor: textColor,
-            codeBackgroundColor: codeBackgroundColor
+            codeBackgroundColor: codeBackgroundColor,
+            inlineCodeStyle: inlineCodeStyle
         )
         cache.setObject(
             CachedResult(
@@ -110,7 +223,8 @@ public enum MarkdownParser {
         _ markdown: String,
         baseFont: UIFont,
         textColor: UIColor,
-        codeBackgroundColor: UIColor
+        codeBackgroundColor: UIColor,
+        inlineCodeStyle: MarkdownInlineCodeStyle
     ) -> MarkdownParseResult {
         let options = AttributedString.MarkdownParsingOptions(
             interpretedSyntax: .full,
@@ -198,6 +312,7 @@ public enum MarkdownParser {
                 baseFont: baseFont,
                 textColor: textColor,
                 codeBackgroundColor: codeBackgroundColor,
+                inlineCodeStyle: inlineCodeStyle,
                 inlineIntent: run.inlinePresentationIntent,
                 presentationIntent: run.presentationIntent,
                 link: run.link,
@@ -232,6 +347,8 @@ public enum MarkdownParser {
                 links: []
             )
         }
+
+        inlineCodeStyle.applyOuterKerning(to: output, baseFont: baseFont)
 
         let links = markdownLinks(from: linkGroups, sourceEvents: sourceLinkEvents)
         return MarkdownParseResult(attributedString: output, links: links)
@@ -793,24 +910,49 @@ public enum MarkdownParser {
     private static func attributes(baseFont: UIFont,
                                    textColor: UIColor,
                                    codeBackgroundColor: UIColor,
+                                   inlineCodeStyle: MarkdownInlineCodeStyle,
                                    inlineIntent: InlinePresentationIntent?,
                                    presentationIntent: PresentationIntent?,
                                    link: URL?,
                                    block: BlockDescriptor) -> [NSAttributedString.Key: Any] {
+        let isCodeBlock = block.kind == .codeBlock
+        let isInlineCodeOnly = !isCodeBlock && inlineIntent?.contains(.code) == true
+
         var attributes: [NSAttributedString.Key: Any] = [
             .font: font(baseFont: baseFont, inlineIntent: inlineIntent, presentationIntent: presentationIntent),
             .paragraphStyle: block.paragraphStyle(baseFont: baseFont)
         ]
 
-        switch block.kind {
-        case .blockQuote:
-            attributes[.foregroundColor] = textColor.withAlphaComponent(0.8)
-        default:
-            attributes[.foregroundColor] = textColor
-        }
+        if isInlineCodeOnly {
+            // Apply caller's font scale on top of the monospaced face the
+            // base `font(...)` already chose. Bold inside ** ** is layered
+            // back in via the weight.
+            if inlineCodeStyle.fontScale != 1.0 {
+                let weight: UIFont.Weight = inlineIntent?.contains(.stronglyEmphasized) == true ? .bold : .regular
+                attributes[.font] = UIFont.monospacedSystemFont(
+                    ofSize: baseFont.pointSize * inlineCodeStyle.fontScale,
+                    weight: weight
+                )
+            }
 
-        if block.kind == .codeBlock || inlineIntent?.contains(.code) == true {
-            attributes[.backgroundColor] = codeBackgroundColor
+            attributes[.foregroundColor] = inlineCodeStyle.foregroundColor ?? textColor
+
+            switch inlineCodeStyle.backgroundMode {
+            case .stockBackgroundColor:
+                attributes[.backgroundColor] = codeBackgroundColor
+            case .markerAttribute(let key):
+                attributes[key] = true
+            }
+        } else {
+            switch block.kind {
+            case .blockQuote:
+                attributes[.foregroundColor] = textColor.withAlphaComponent(0.8)
+            default:
+                attributes[.foregroundColor] = textColor
+            }
+            if isCodeBlock {
+                attributes[.backgroundColor] = codeBackgroundColor
+            }
         }
 
         if inlineIntent?.contains(.strikethrough) == true {

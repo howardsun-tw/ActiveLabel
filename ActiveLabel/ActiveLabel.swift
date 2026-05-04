@@ -334,8 +334,16 @@ open class ActiveLabel: UILabel {
     private var selectedElementOriginalAttributes: [(NSRange, [NSAttributedString.Key: Any])] = []
     private var heightCorrection: CGFloat = 0
     internal lazy var textStorage = NSTextStorage()
-    private lazy var layoutManager = NSLayoutManager()
+    private lazy var layoutManager: NSLayoutManager = makeLayoutManager()
     private lazy var textContainer = NSTextContainer()
+
+    /// Subclass seam — override to install a custom `NSLayoutManager`
+    /// (e.g. for rounded inline-code backgrounds). Default returns a stock
+    /// `NSLayoutManager`. Called once during lazy `layoutManager`
+    /// materialization.
+    open func makeLayoutManager() -> NSLayoutManager {
+        NSLayoutManager()
+    }
     lazy var activeElements = [ActiveType: [ElementTuple]]()
     
     // MARK: - helper functions
@@ -357,11 +365,18 @@ open class ActiveLabel: UILabel {
         attributedText = markdownAttributedString(from: markdown)
     }
 
+    /// Inline-`code` styling fed to `MarkdownParser.parse`. Subclasses may
+    /// override to opt into a marker-attribute paint (e.g. a custom
+    /// `NSLayoutManager` painting a rounded pill) rather than the default
+    /// flat `.backgroundColor`.
+    open var markdownInlineCodeStyle: MarkdownInlineCodeStyle { .default }
+
     private func markdownAttributedString(from markdown: String) -> NSAttributedString {
         let result = MarkdownParser.parse(
             markdown,
             baseFont: markdownBaseFont ?? font,
-            textColor: textColor ?? .label
+            textColor: textColor ?? .label,
+            inlineCodeStyle: markdownInlineCodeStyle
         )
         markdownLinkElements = result.links.map { link in
             let visibleText = result.attributedString.attributedSubstring(from: link.range).string
@@ -377,10 +392,18 @@ open class ActiveLabel: UILabel {
         markdownLinkElements.removeAll()
     }
     
+    /// Horizontal slack the text container reserves on each side of every
+    /// line. Subclasses that decorate runs with paddings exceeding the
+    /// glyph bounds (e.g. inline-code rounded pills) need this to be at
+    /// least as wide as their largest run-side padding so the decoration
+    /// never clips against `label.bounds`. Default 0 preserves the
+    /// original tight-text layout.
+    open var textContainerLineFragmentPadding: CGFloat { 0 }
+
     private func setupLabel() {
         textStorage.addLayoutManager(layoutManager)
         layoutManager.addTextContainer(textContainer)
-        textContainer.lineFragmentPadding = 0
+        textContainer.lineFragmentPadding = textContainerLineFragmentPadding
         textContainer.lineBreakMode = lineBreakMode
         textContainer.maximumNumberOfLines = numberOfLines
         isUserInteractionEnabled = true

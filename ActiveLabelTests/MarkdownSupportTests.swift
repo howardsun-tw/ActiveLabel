@@ -142,7 +142,12 @@ func testFencedCodeBlockRunCarriesBackgroundColor() throws {
         XCTAssertEqual(bg, .systemGray6)
     }
 
-    func testInlineCodeRunCarriesBackgroundColor() throws {
+    func testInlineCodeDefaultStyleEmitsFlatBackgroundColor() throws {
+        // Out-of-the-box (no `inlineCodeStyle:`), the parser remains
+        // backwards-compatible: inline `code` is painted with a flat
+        // `.backgroundColor`, font stays at the body size, and there is
+        // no marker attribute. Consumers who want a custom rounded pill
+        // opt in via `MarkdownInlineCodeStyle`.
         let result = MarkdownParser.parse(
             "Use `print` here",
             baseFont: baseFont,
@@ -150,8 +155,54 @@ func testFencedCodeBlockRunCarriesBackgroundColor() throws {
             codeBackgroundColor: .systemGray6
         )
 
-        let bg = try XCTUnwrap(backgroundColor(in: result.attributedString, matching: "print"))
-        XCTAssertEqual(bg, .systemGray6)
+        let attr = result.attributedString
+        let nsString = attr.string as NSString
+        let range = nsString.range(of: "print")
+
+        let bg = attr.attribute(.backgroundColor, at: range.location, effectiveRange: nil) as? UIColor
+        XCTAssertEqual(bg, .systemGray6,
+                       "default style must paint flat `.backgroundColor` for inline code")
+
+        let font = try XCTUnwrap(attr.attribute(.font, at: range.location, effectiveRange: nil) as? UIFont)
+        XCTAssertEqual(font.pointSize, baseFont.pointSize, accuracy: 0.01,
+                       "default style must not scale inline code font")
+    }
+
+    func testInlineCodeCustomStyleEmitsMarkerAttributeAndDropsBackground() throws {
+        // Opt in to a marker-driven rounded pill: parser writes the
+        // caller-named attribute key, scales the font, paints the
+        // caller's foreground color, and skips `.backgroundColor`.
+        let markerKey = NSAttributedString.Key("CustomInlineCodeMarker")
+        let style = MarkdownInlineCodeStyle(
+            foregroundColor: .red,
+            fontScale: 0.85,
+            backgroundMode: .markerAttribute(markerKey)
+        )
+
+        let result = MarkdownParser.parse(
+            "Use `print` here",
+            baseFont: baseFont,
+            textColor: .black,
+            codeBackgroundColor: .systemGray6,
+            inlineCodeStyle: style
+        )
+
+        let attr = result.attributedString
+        let nsString = attr.string as NSString
+        let range = nsString.range(of: "print")
+
+        let marker = attr.attribute(markerKey, at: range.location, effectiveRange: nil) as? NSNumber
+        XCTAssertEqual(marker?.boolValue, true,
+                       "custom style must tag the caller-named marker attribute")
+
+        let bg = attr.attribute(.backgroundColor, at: range.location, effectiveRange: nil) as? UIColor
+        XCTAssertNil(bg, "marker mode must drop stock `.backgroundColor`")
+
+        let fg = attr.attribute(.foregroundColor, at: range.location, effectiveRange: nil) as? UIColor
+        XCTAssertEqual(fg, .red, "custom foreground color must override textColor for inline code")
+
+        let font = try XCTUnwrap(attr.attribute(.font, at: range.location, effectiveRange: nil) as? UIFont)
+        XCTAssertEqual(font.pointSize, baseFont.pointSize * 0.85, accuracy: 0.01)
     }
 
     func testListItemAppliesHangingHeadIndent() throws {
